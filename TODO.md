@@ -1,4 +1,5 @@
 # MPPI-ROS node
 
 - [X] include the controller.
-- [ ] parse the config file.
+- [ ] load the params.
+- [ ] parse the config files.

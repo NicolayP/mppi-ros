@@ -5,9 +5,9 @@ import os
 
 from tqdm import tqdm
 
-from controller_base import ControllerBase
-from cost import getCost
-from model import getModel
+from mppi_tf.scripts.controller_base import ControllerBase
+from mppi_tf.scripts.cost import getCost
+#from model import getModel
 
 from geometry_msgs.msg import WrenchStamped, PoseStamped, TwistStamped, \
     Vector3, Quaternion, Pose
@@ -24,11 +24,13 @@ class MPPINode(object):
     def __init__(self):
 
          # Subscribe to odometry topic
-        self._odom_topic_sub = rospy.Subscriber(
-            '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
+        #self._odom_topic_sub = rospy.Subscriber(
+        #    '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
 
-        self._thrust_pub = rospy.Publisher(
-                'thruster_output', WrenchStamped, queue_size=1)
+        # Publish on to the thruster alocation matrix.
+        #self._thrust_pub = rospy.Publisher(
+        #        'thruster_output', WrenchStamped, queue_size=1)
+
         self.state = np.zeros(13)
         self.forces = np.ones(6)
 
@@ -36,11 +38,48 @@ class MPPINode(object):
 
         self._namespace = "foo"
 
-        
+        if rospy.has_param("~samples"):
+            self._samples = rospy.get_param("~samples")
+        else:
+            rospy.logerr("Need to set the number of samples to use")
+            return
+
+        if rospy.has_param("~horizon"):
+            self._horizon = rospy.get_param("~horizon")
+        else:
+            rospy.logerr("Need to set the number of samples to use")
+            return
+
+        if rospy.has_param("~lambda"):
+            self._lambda = rospy.get_param("~lambda")
+        else:
+            rospy.logerr("Need to set the number of samples to use")
+            return
+
+        if rospy.has_param("~gamma"):
+            self._gamma = rospy.get_param("~gamma")
+        else:
+            rospy.logerr("Need to set the number of samples to use")
+            return
+
+        if rospy.has_param("~upsilon"):
+            self._upsilon = rospy.get_param("~upsilon")
+        else:
+            rospy.logerr("Need to set the number of samples to use")
+            return
+
+        if rospy.has_param("~cost"):
+            self.task = rospy.get_param("~cost")
+        else:
+            rospy.logerr("No cost function given")
+            return
+
+        self._noise = np.array([[1., 0.], [0., 1.]])
+
         self.cost = getCost(self.task, 
                             self._lambda, self._gamma, self._upsilon, 
                             self._noise, self._horizon)
-
+        '''
         self.model = getModel(self.cost, 
                               self._s_dim, self._a_dim,
                               self._model_name)
@@ -52,7 +91,7 @@ class MPPINode(object):
                                          sigma=self._noise, log=self._log, gif=False, 
                                          normalize_cost=True, filter_seq=True, debug=True,
                                          config_file=self.conf, task_file=self.task)
-
+        '''
         pass 
 
     def publish_control_wrench(self, forces):

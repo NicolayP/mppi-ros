@@ -25,9 +25,13 @@
     <arg name="use_ned_frame" default="false" doc="If true, the reference frame is set to be NED (North-East-Down) instead of Gazebo's default ENU (East-North-Up)"/>
 
     <arg name="lambda" default="0.15" doc="Lambda hyperparam in MPPI"/>
-    <arg name="eta" default="0.1" doc=""/>
-    <arg name="nu" default="0.2" doc=""/>
-    <arg name="cost" default="elpise" doc="The type of cost function to use. Currently supported: elipse|static. To be supported: follow, path"/>
+    <arg name="gamma" default="0.1" doc="decoupling factor between cost and noise"/>
+    <arg name="upsilon" default="0.2" doc="augmented noise covariance"/>
+    <arg name="samples" default="3000" doc="number of samples used for the controller"/>
+    <arg name="horizon" default="50" doc="Prediction horizon length"/>
+    <arg name="cost" default="$(find mppi-ros)/scripts/mppi_tf/config/tasks/elipse_task.default.yaml" doc="Configuration file for the cost function"/>
+    <arg name="model" default="nn" doc="The internal model used by mppi"/>
+
 
     <!-- Initialize the recording fo the simulation according to the record flag  -->
     <include file="$(find bluerov2_control)/launch/record.launch">
@@ -38,6 +42,13 @@
     <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
         <remap from="thruster_output" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+        <param name="lambda" value="$(arg lambda)"/>
+        <param name="gamma" value="$(arg lambda)"/>
+        <param name="upsilon" value="$(arg lambda)"/>
+        <param name="samples" value="$(arg samples)"/>
+        <param name="horizon" value="$(arg horizon)"/>
+        <param name="model" value="$(arg model)"/>
+        <rosparam command="load" file="$(arg cost)" ns="cost"/>
     </node>
 
     <!-- Start RViz  -->
