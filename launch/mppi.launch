@@ -1,0 +1,50 @@
+<!-- 
+    > **Example**
+
+    ```
+    roslaunch uuv_gazebo_worlds ocean_waves.launch
+    ```
+
+    ```
+    roslaunch bluerov2_description upload_bluerov2.launch
+    ```
+
+    ```
+    roslaunch mppi-ros start_mppi_controller.launch
+    ```
+-->
+<launch>
+    <arg name="uuv_name" default="bluerov2" doc="Namespace of the vehicle to be controller"/>
+    
+    <!-- Name of the vehicle model -->
+    <arg name="model_name" default="$(arg uuv_name)"/>
+    <!-- Flag to start recoding a rosbag  -->
+    <arg name="record" default="false" doc="Record ROS bag"/>
+    
+    <arg name="gui_on" default="true" doc="Start Gazebo client and RViz"/>
+    <arg name="use_ned_frame" default="false" doc="If true, the reference frame is set to be NED (North-East-Down) instead of Gazebo's default ENU (East-North-Up)"/>
+
+    <arg name="lambda" default="0.15" doc="Lambda hyperparam in MPPI"/>
+    <arg name="eta" default="0.1" doc=""/>
+    <arg name="nu" default="0.2" doc=""/>
+    <arg name="cost" default="elpise" doc="The type of cost function to use. Currently supported: elipse|static. To be supported: follow, path"/>
+
+    <!-- Initialize the recording fo the simulation according to the record flag  -->
+    <include file="$(find bluerov2_control)/launch/record.launch">
+      <arg name="record" value="$(arg record)"/>
+      <arg name="use_ned_frame" value="$(arg use_ned_frame)"/>
+    </include>
+
+    <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
+        <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
+        <remap from="thruster_output" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+    </node>
+
+    <!-- Start RViz  -->
+    <!--
+    <group if="$(arg gui_on)">
+      <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find bluerov2_control)/rviz/rexrov2_control.rviz"/>
+    </group>
+    -->
+
+</launch>

@@ -1,0 +1,3 @@
+[submodule "scripts/mppi-tf"]
+	path = scripts/mppi-tf
+	url = git@github.com:NicolayP/mppi-tf.git
