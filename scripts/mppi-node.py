@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from mppi_tf.scripts.controller_base import ControllerBase
 from mppi_tf.scripts.cost import getCost
-#from model import getModel
+from mppi_tf.scripts.model import getModel
 
 from geometry_msgs.msg import WrenchStamped, PoseStamped, TwistStamped, \
     Vector3, Quaternion, Pose
@@ -22,15 +22,6 @@ import sys
 
 class MPPINode(object):
     def __init__(self):
-
-         # Subscribe to odometry topic
-        #self._odom_topic_sub = rospy.Subscriber(
-        #    '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
-
-        # Publish on to the thruster alocation matrix.
-        #self._thrust_pub = rospy.Publisher(
-        #        'thruster_output', WrenchStamped, queue_size=1)
-
         self.state = np.zeros(13)
         self.forces = np.ones(6)
 
@@ -68,31 +59,76 @@ class MPPINode(object):
             rospy.logerr("Need to set the number of samples to use")
             return
 
+        if rospy.has_param("~dt"):
+            self._dt = rospy.get_param("~dt")
+        else:
+            rospy.logerr("Don't know the timestep.")
+            return
+
+        if rospy.has_param("~state_dim"):
+            self._state_dim = rospy.get_param("~state_dim")
+        else:
+            rospy.logerr("Don't know the state dimensionality.")
+            return
+
+        if rospy.has_param("~action_dim"):
+            self._action_dim = rospy.get_param("~action_dim")
+        else:
+            rospy.logerr("Don't know the actuator dimensionality.")
+            return
+
         if rospy.has_param("~cost"):
             self.task = rospy.get_param("~cost")
         else:
-            rospy.logerr("No cost function given")
+            rospy.logerr("No cost function given.")
             return
 
-        self._noise = np.array([[1., 0.], [0., 1.]])
+        if rospy.has_param("~model"):
+            self.model_conf = rospy.get_param("~model")
+        else:
+            rospy.logerr("No internal model given.")
+            return
+
+        if rospy.has_param("~log"):
+            self._log = rospy.get_param("~log")
+            if rospy.has_param("~log_path"):
+                self._log_path = rospy.get_param("~log_path")
+        else:
+            rospy.logerr("No log flag given.")
+
+        if rospy.has_param("~noise"):
+            self._noise = rospy.get_param("~noise")
+        else:
+            rospy.logerr("No noise given")
 
         self.cost = getCost(self.task, 
                             self._lambda, self._gamma, self._upsilon, 
                             self._noise, self._horizon)
-        '''
-        self.model = getModel(self.cost, 
-                              self._s_dim, self._a_dim,
-                              self._model_name)
-
+        
+        self.model = getModel(self.model_conf, self._dt, self._state_dim, self._action_dim, "NN")
+        
         self.controller = ControllerBase(self.model, self.cost,
                                          k=self._samples, tau=self._horizon, dt=self._dt,
-                                         s_dim=self._s_dim, a_dim=self._a_dim,
+                                         s_dim=self._state_dim, a_dim=self._action_dim,
                                          lam=self._lambda, upsilon=self._upsilon,
-                                         sigma=self._noise, log=self._log, gif=False, 
-                                         normalize_cost=True, filter_seq=True, debug=True,
-                                         config_file=self.conf, task_file=self.task)
-        '''
-        pass 
+                                         sigma=self._noise, 
+                                         normalize_cost=True, filter_seq=True,
+                                         log=self._log, log_path=self._log_path,
+                                         gif=False, debug=True,
+                                         config_file=None, task_file=self.task)
+        
+
+        # Subscribe to odometry topic
+        #self._odom_topic_sub = rospy.Subscriber(
+        #    '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
+
+        # Publish on to the thruster alocation matrix.
+        #self._thrust_pub = rospy.Publisher(
+        #        'thruster_output', WrenchStamped, queue_size=1)
+
+        rospy.loginfo("Controller loaded.")
+
+
 
     def publish_control_wrench(self, forces):
         if not self.odom_is_init:
