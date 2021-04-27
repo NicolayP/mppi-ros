@@ -119,12 +119,12 @@ class MPPINode(object):
         
 
         # Subscribe to odometry topic
-        #self._odom_topic_sub = rospy.Subscriber(
-        #    '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
+        self._odom_topic_sub = rospy.Subscriber(
+            '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
 
         # Publish on to the thruster alocation matrix.
-        #self._thrust_pub = rospy.Publisher(
-        #        'thruster_output', WrenchStamped, queue_size=1)
+        self._thrust_pub = rospy.Publisher(
+                'thruster_output', WrenchStamped, queue_size=1)
 
         rospy.loginfo("Controller loaded.")
 
@@ -153,37 +153,60 @@ class MPPINode(object):
         # get the new system state
 
         if not self._init_odom:
-            self._init_odom = True   
-        
-        self.state[0] = msg.pose.pose.position.x
-        self.state[1] = msg.pose.pose.position.y
-        self.state[2] = msg.pose.pose.position.z
-        
-        self.state[3] = msg.pose.pose.orientation.x
-        self.state[4] = msg.pose.pose.orientation.y
-        self.state[5] = msg.pose.pose.orientation.z
-        self.state[6] = msg.pose.pose.orientation.w
+            self.prev_time = rospy.get_rostime()
+            self.prev_state = self.get_state(msg)
+            self._init_odom = True
 
-        self.state[7] = msg.twist.twist.linear.x
-        self.state[8] = msg.twist.twist.linear.y
-        self.state[9] = msg.twist.twist.linear.z
+            # compute first action
+            self.forces = self.controller.next(self.prev_state)
+            print(self.forces)
+            # publish first control
+            self.publish_control_wrench(self.forces)
 
-        self.state[10] = msg.twist.twist.angular.x
-        self.state[11] = msg.twist.twist.angular.y
-        self.state[12] = msg.twist.twist.angular.z
+            return
         
+        time = rospy.get_rostime()
+        dt = time - self.prev_time
+
+        if dt.to_sec() < self._dt:
+            return
+        self.prev_time = time
+
+        self.state = self.get_state(msg)
+
         #rospy.loginfo("State: {}".format(self.state))
         # save the transition
         self.controller.save(self.prev_state, self.forces, self.state)
 
-        # compute next action
-        self.forces = self.controller.next(self.state)
-
-        # execute the control action
-        self.publish_control_wrench(self.forces)
-
         # update previous state
         self.prev_state = self.state
+
+        # compute first action
+        self.forces = self.controller.next(self.prev_state)
+
+        # publish first control
+        self.publish_control_wrench(self.forces)
+
+    def get_state(self, msg):
+        state = np.zeros((13, 1))
+        state[0] = msg.pose.pose.position.x
+        state[1] = msg.pose.pose.position.y
+        state[2] = msg.pose.pose.position.z
+
+        state[3] = msg.pose.pose.orientation.x
+        state[4] = msg.pose.pose.orientation.y
+        state[5] = msg.pose.pose.orientation.z
+        state[6] = msg.pose.pose.orientation.w
+
+        state[7] = msg.twist.twist.linear.x
+        state[8] = msg.twist.twist.linear.y
+        state[9] = msg.twist.twist.linear.z
+
+        state[10] = msg.twist.twist.angular.x
+        state[11] = msg.twist.twist.angular.y
+        state[12] = msg.twist.twist.angular.z
+        return state
+
 
     @property
     def odom_is_init(self):
