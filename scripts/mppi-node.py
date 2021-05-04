@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
+import sys
+sys.path.append('/home/pierre/workspace/uuv_ws/src/mppi-ros/scripts/mppi_tf/scripts/')
+
 import argparse
 import os
 
 from tqdm import tqdm
 
-from mppi_tf.scripts.controller_base import ControllerBase
-from mppi_tf.scripts.cost import getCost
-from mppi_tf.scripts.model import getModel
+from controller_base import ControllerBase
+from cost import getCost
+from model import getModel
 
 from geometry_msgs.msg import WrenchStamped, PoseStamped, TwistStamped, \
     Vector3, Quaternion, Pose
@@ -17,7 +20,6 @@ from rospy.numpy_msg import numpy_msg
 
 import numpy as np
 import rospy
-import sys
 
 
 class MPPINode(object):
@@ -103,7 +105,7 @@ class MPPINode(object):
 
         self.cost = getCost(self.task, 
                             self._lambda, self._gamma, self._upsilon, 
-                            self._noise, self._horizon)
+                            self._noise)
         
         self.model = getModel(self.model_conf, self._dt, self._state_dim, self._action_dim, "NN")
         
@@ -127,8 +129,6 @@ class MPPINode(object):
                 'thruster_output', WrenchStamped, queue_size=1)
 
         rospy.loginfo("Controller loaded.")
-
-
 
     def publish_control_wrench(self, forces):
         if not self.odom_is_init:
@@ -159,7 +159,6 @@ class MPPINode(object):
 
             # compute first action
             self.forces = self.controller.next(self.prev_state)
-            print(self.forces)
             # publish first control
             self.publish_control_wrench(self.forces)
 
@@ -176,14 +175,13 @@ class MPPINode(object):
 
         #rospy.loginfo("State: {}".format(self.state))
         # save the transition
-        self.controller.save(self.prev_state, self.forces, self.state)
+        self.controller.save(self.prev_state, np.expand_dims(self.forces, -1), self.state)
 
         # update previous state
         self.prev_state = self.state
 
         # compute first action
         self.forces = self.controller.next(self.prev_state)
-
         # publish first control
         self.publish_control_wrench(self.forces)
 
@@ -206,7 +204,6 @@ class MPPINode(object):
         state[11] = msg.twist.twist.angular.y
         state[12] = msg.twist.twist.angular.z
         return state
-
 
     @property
     def odom_is_init(self):
