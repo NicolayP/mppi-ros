@@ -103,12 +103,18 @@ class MPPINode(object):
         else:
             rospy.logerr("No noise given")
 
+        rospy.loginfo("Get cost")
+
         self.cost = getCost(self.task, 
                             self._lambda, self._gamma, self._upsilon, 
                             self._noise)
         
-        self.model = getModel(self.model_conf, self._dt, self._state_dim, self._action_dim, "NN")
+        rospy.loginfo("Get Model")
+
+        self.model = getModel(self.model_conf, self._samples, self._dt, self._state_dim, self._action_dim, self.model_conf['type'])
         
+        rospy.loginfo("Get controller")
+
         self.controller = ControllerBase(self.model, self.cost,
                                          k=self._samples, tau=self._horizon, dt=self._dt,
                                          s_dim=self._state_dim, a_dim=self._action_dim,
@@ -119,10 +125,13 @@ class MPPINode(object):
                                          gif=False, debug=True,
                                          config_file=None, task_file=self.task)
         
+        rospy.loginfo("Subscrive to odometrie topics")
 
         # Subscribe to odometry topic
         self._odom_topic_sub = rospy.Subscriber(
             '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
+
+        rospy.loginfo("Publish to thruster topics")
 
         # Publish on to the thruster alocation matrix.
         self._thrust_pub = rospy.Publisher(
