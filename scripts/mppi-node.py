@@ -19,6 +19,7 @@ from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
 
 import numpy as np
+from quaternion import as_euler_angles
 import rospy
 
 
@@ -29,7 +30,15 @@ class MPPINode(object):
 
         self._init_odom = False
 
-        self._namespace = "foo"
+        self._namespace = "rexrov2"
+
+        self.once = True
+
+        if rospy.has_param("~model_name"):
+            self._uuv_name = rospy.get_param("~model_name")
+        else:
+            rospy.logerr("Need to specify the model name to publish on")
+            return
 
         if rospy.has_param("~samples"):
             self._samples = rospy.get_param("~samples")
@@ -111,16 +120,16 @@ class MPPINode(object):
         
         rospy.loginfo("Get Model")
 
-        self.model = getModel(self.model_conf, self._samples, self._dt, self._state_dim, self._action_dim, self.model_conf['type'])
+        self.model = getModel(self.model_conf, self._samples, self._dt, True, self._action_dim, self.model_conf['type'])
         
         rospy.loginfo("Get controller")
 
         self.controller = ControllerBase(self.model, self.cost,
                                          k=self._samples, tau=self._horizon, dt=self._dt,
-                                         s_dim=self._state_dim, a_dim=self._action_dim,
+                                         s_dim=13, a_dim=self._action_dim,
                                          lam=self._lambda, upsilon=self._upsilon,
                                          sigma=self._noise, 
-                                         normalize_cost=True, filter_seq=True,
+                                         normalize_cost=True, filter_seq=False,
                                          log=self._log, log_path=self._log_path,
                                          gif=False, debug=True,
                                          config_file=None, task_file=self.task)
@@ -129,7 +138,7 @@ class MPPINode(object):
 
         # Subscribe to odometry topic
         self._odom_topic_sub = rospy.Subscriber(
-            '/bluerov2/pose_gt', numpy_msg(Odometry), self.odometry_callback)
+            "/{}/pose_gt".format(self._uuv_name), numpy_msg(Odometry), self.odometry_callback)
 
         rospy.loginfo("Publish to thruster topics")
 
@@ -158,6 +167,7 @@ class MPPINode(object):
         self._thrust_pub.publish(force_msg)
 
     def odometry_callback(self, msg):
+
         # TODO: compute the state in body frame.
         # get the new system state
 
@@ -168,9 +178,13 @@ class MPPINode(object):
 
             # compute first action
             self.forces = self.controller.next(self.prev_state)
+            paths = self.controller.getPaths()
+            applied = self.controller.getApplied()
+            if self.once:
+                self.save_paths_and_actions(paths, applied)
+                self.once = False
             # publish first control
             self.publish_control_wrench(self.forces)
-
             return
         
         time = rospy.get_rostime()
@@ -194,21 +208,40 @@ class MPPINode(object):
         # publish first control
         self.publish_control_wrench(self.forces)
 
+    def save_paths_and_actions(self, paths, applied):
+        with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/traj.npy", "wb") as f:
+            quats = paths[:, :, 3:7]
+            paths_euler = np.zeros(shape=(paths.shape[0], paths.shape[1], 12, 1))
+            for i, entry in enumerate(quats):
+                for j, el in enumerate(entry):
+                    q = np.quaternion(el[0], el[1], el[2], el[3])
+                    euler = as_euler_angles(q)
+                    paths_euler[i, j, 0:3] = paths[i, j, 0:3]
+                    paths_euler[i, j, 3:6] = np.expand_dims(euler, axis=-1)
+                    paths_euler[i, j, 6:12] = paths[i, j, 7:13]
+            np.save(f, paths_euler)
+            print(paths_euler.shape)
+        with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
+            np.save(f, applied)
+            print(applied.shape)
+
     def get_state(self, msg):
         state = np.zeros((13, 1))
         state[0] = msg.pose.pose.position.x
         state[1] = msg.pose.pose.position.y
         state[2] = msg.pose.pose.position.z
 
-        state[3] = msg.pose.pose.orientation.x
-        state[4] = msg.pose.pose.orientation.y
-        state[5] = msg.pose.pose.orientation.z
-        state[6] = msg.pose.pose.orientation.w
+        state[3] = msg.pose.pose.orientation.w
+        state[4] = msg.pose.pose.orientation.x
+        state[5] = msg.pose.pose.orientation.y
+        state[6] = msg.pose.pose.orientation.z
 
+        # Expressed in world frame
         state[7] = msg.twist.twist.linear.x
         state[8] = msg.twist.twist.linear.y
         state[9] = msg.twist.twist.linear.z
 
+        # Expresssed in world frame
         state[10] = msg.twist.twist.angular.x
         state[11] = msg.twist.twist.angular.y
         state[12] = msg.twist.twist.angular.z

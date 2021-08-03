@@ -14,26 +14,24 @@
     ```
 -->
 <launch>
-    <arg name="uuv_name" default="bluerov2" doc="Namespace of the vehicle to be controller"/>
+    <arg name="uuv_name" default="rexrov2" doc="Namespace of the vehicle to be controller"/>
     
     <!-- Name of the vehicle model -->
     <arg name="model_name" default="$(arg uuv_name)"/>
     <!-- Flag to start recoding a rosbag  -->
     <arg name="record" default="false" doc="Record ROS bag"/>
-    
-    <arg name="gui_on" default="true" doc="Start Gazebo client and RViz"/>
     <arg name="use_ned_frame" default="false" doc="If true, the reference frame is set to be NED (North-East-Down) instead of Gazebo's default ENU (East-North-Up)"/>
 
     <arg name="lambda" default="0.15" doc="Lambda hyperparam in MPPI"/>
     <arg name="gamma" default="0.1" doc="decoupling factor between cost and noise"/>
-    <arg name="upsilon" default="0.2" doc="augmented noise covariance"/>
+    <arg name="upsilon" default="0.5" doc="augmented noise covariance"/>
     <arg name="samples" default="3000" doc="number of samples used for the controller"/>
     <arg name="horizon" default="50" doc="Prediction horizon length"/>
-    <arg name="cost" default="$(find mppi-ros)/scripts/mppi_tf/config/tasks/elipse3d_task.default.yaml" doc="Configuration file for the cost function"/>
+    <arg name="cost" default="$(find mppi-ros)/scripts/mppi_tf/config/tasks/static_cost_auv.yaml" doc="Configuration file for the cost function"/>
     <arg name="model" default="$(find mppi-ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
     <arg name="conf" default="$(find mppi-ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
-    <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
+    <arg name="state_dim" default="12" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
     <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
     <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
@@ -47,6 +45,7 @@
     <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
         <remap from="thruster_output" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+        <param name="model_name" value="$(arg model_name)"/>
         <param name="lambda" value="$(arg lambda)"/>
         <param name="gamma" value="$(arg lambda)"/>
         <param name="upsilon" value="$(arg lambda)"/>
@@ -61,12 +60,5 @@
         <param name="log" value="$(arg log)"/>
         <param name="log_path" value="$(arg log_path)"/>
     </node>
-
-    <!-- Start RViz  -->
-    <!--
-    <group if="$(arg gui_on)">
-      <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find bluerov2_control)/rviz/rexrov2_control.rviz"/>
-    </group>
-    -->
 
 </launch>
