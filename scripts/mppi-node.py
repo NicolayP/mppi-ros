@@ -5,6 +5,7 @@ sys.path.append('/home/pierre/workspace/uuv_ws/src/mppi-ros/scripts/mppi_tf/scri
 
 import argparse
 import os
+import time as t
 
 from tqdm import tqdm
 
@@ -23,6 +24,7 @@ from quaternion import as_euler_angles
 import rospy
 
 
+
 class MPPINode(object):
     def __init__(self):
         self.state = np.zeros(13)
@@ -33,6 +35,9 @@ class MPPINode(object):
         self._namespace = "rexrov2"
 
         self.once = True
+
+        self.elapsed = 0.
+        self.steps = 0
 
         if rospy.has_param("~model_name"):
             self._uuv_name = rospy.get_param("~model_name")
@@ -168,20 +173,25 @@ class MPPINode(object):
 
     def odometry_callback(self, msg):
 
-        # TODO: compute the state in body frame.
-        # get the new system state
-
         if not self._init_odom:
+            # First call
             self.prev_time = rospy.get_rostime()
-            self.prev_state = self.get_state(msg)
+            self.prev_state = self.update_odometry(msg)
             self._init_odom = True
 
             # compute first action
+            start = t.perf_counter()
+
             self.forces = self.controller.next(self.prev_state)
+
+            end = t.perf_counter()
+            self.elapsed += (end-start)
+            self.steps += 1
+
             paths = self.controller.getPaths()
             applied = self.controller.getApplied()
             if self.once:
-                self.save_paths_and_actions(paths, applied)
+                #self.save_paths_and_actions(paths, applied)
                 self.once = False
             # publish first control
             self.publish_control_wrench(self.forces)
@@ -194,7 +204,7 @@ class MPPINode(object):
             return
         self.prev_time = time
 
-        self.state = self.get_state(msg)
+        self.state = self.update_odometry(msg)
 
         #rospy.loginfo("State: {}".format(self.state))
         # save the transition
@@ -203,8 +213,20 @@ class MPPINode(object):
         # update previous state
         self.prev_state = self.state
 
+        start = t.perf_counter()
+
         # compute first action
         self.forces = self.controller.next(self.prev_state)
+
+        end = t.perf_counter()
+        self.elapsed += (end-start)
+        self.steps += 1
+
+        if self.steps % 10 == 0:
+            print("*"*5 + " MPPI Time stats " + "*"*5)
+            print("* Next step   : {:.4f} (sec)".format(self.elapsed/self.steps))
+            self.model.stats()
+
         # publish first control
         self.publish_control_wrench(self.forces)
 
@@ -225,26 +247,50 @@ class MPPINode(object):
             np.save(f, applied)
             print(applied.shape)
 
-    def get_state(self, msg):
+    def update_odometry(self, msg):
+        """Odometry topic subscriber callback function."""
+        # The frames of reference delivered by the odometry seems to be as
+        # follows
+        # position -> world frame
+        # orientation -> world frame
+        # linear velocity -> world frame
+        # angular velocity -> world frame
+
+        if self.model.inertial_frame_id != msg.header.frame_id:
+            raise rospy.ROSException('The inertial frame ID used by the '
+                                     'vehicle model does not match the '
+                                     'odometry frame ID, vehicle=%s, odom=%s' %
+                                     (self.model.inertial_frame_id,
+                                      msg.header.frame_id))
+
+        # Update the velocity vector
+        # Update the pose in the inertial frame
         state = np.zeros((13, 1))
-        state[0] = msg.pose.pose.position.x
-        state[1] = msg.pose.pose.position.y
-        state[2] = msg.pose.pose.position.z
+        state[0:3, :] = np.array([[msg.pose.pose.position.x],
+                                  [msg.pose.pose.position.y],
+                                  [msg.pose.pose.position.z]])
 
-        state[3] = msg.pose.pose.orientation.w
-        state[4] = msg.pose.pose.orientation.x
-        state[5] = msg.pose.pose.orientation.y
-        state[6] = msg.pose.pose.orientation.z
+        # Using the (x, y, z, w) format for quaternions
+        state[3:7, :] = np.array([[msg.pose.pose.orientation.x],
+                                  [msg.pose.pose.orientation.y],
+                                  [msg.pose.pose.orientation.z],
+                                  [msg.pose.pose.orientation.w]])
 
-        # Expressed in world frame
-        state[7] = msg.twist.twist.linear.x
-        state[8] = msg.twist.twist.linear.y
-        state[9] = msg.twist.twist.linear.z
-
-        # Expresssed in world frame
-        state[10] = msg.twist.twist.angular.x
-        state[11] = msg.twist.twist.angular.y
-        state[12] = msg.twist.twist.angular.z
+        # Linear velocity on the INERTIAL frame
+        lin_vel = np.array([msg.twist.twist.linear.x,
+                            msg.twist.twist.linear.y,
+                            msg.twist.twist.linear.z])
+        # Transform linear velocity to the BODY frame
+        rotItoB = self.model.rotBtoInp(state[3:7, 0]).T
+        lin_vel = np.expand_dims(np.dot(rotItoB, lin_vel), axis=-1)
+        # Angular velocity in the INERTIAL frame
+        ang_vel = np.array([msg.twist.twist.angular.x,
+                            msg.twist.twist.angular.y,
+                            msg.twist.twist.angular.z])
+        # Transform angular velocity to BODY frame
+        ang_vel = np.expand_dims(np.dot(rotItoB, ang_vel), axis=-1)
+        # Store velocity vector
+        state[7:13, :] = np.concatenate([lin_vel, ang_vel], axis=0)
         return state
 
     @property
