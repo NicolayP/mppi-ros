@@ -24,11 +24,29 @@ from quaternion import as_euler_angles
 import rospy
 
 
+def euler_rot(rotBtoI):
+    """`list`: Orientation in Euler angles in radians
+    as described in Fossen, 2011.
+    """
+    # Rotation matrix from BODY to INERTIAL
+    rot = rotBtoI
+    # Roll
+    roll = np.arctan2(rot[2, 1], rot[2, 2])
+    # Pitch, treating singularity cases
+    den = np.sqrt(1 - rot[2, 0]**2)
+    pitch = -np.arctan(rot[2, 0] / den)
+    # Yaw
+    yaw = np.arctan2(rot[1, 0], rot[0, 0])
+    return np.array([roll, pitch, yaw])
 
 class MPPINode(object):
     def __init__(self):
         self.state = np.zeros(13)
-        self.forces = np.ones(6)
+        self.forces = np.zeros(6)
+
+        self.applied = []
+        self.states = []
+        self.accs = []
 
         self._init_odom = False
 
@@ -112,6 +130,12 @@ class MPPINode(object):
         else:
             rospy.logerr("No log flag given.")
 
+        if rospy.has_param("~dev"):
+            self._dev = rospy.get_param("~dev")
+        else:
+            rospy.logerr("No flag for dev mode given.")
+
+
         if rospy.has_param("~noise"):
             self._noise = rospy.get_param("~noise")
         else:
@@ -136,7 +160,7 @@ class MPPINode(object):
                                          sigma=self._noise, 
                                          normalize_cost=True, filter_seq=False,
                                          log=self._log, log_path=self._log_path,
-                                         gif=False, debug=True,
+                                         gif=False, debug=self._dev,
                                          config_file=None, task_file=self.task)
         
         rospy.loginfo("Subscrive to odometrie topics")
@@ -149,7 +173,7 @@ class MPPINode(object):
 
         # Publish on to the thruster alocation matrix.
         self._thrust_pub = rospy.Publisher(
-                'thruster_output', WrenchStamped, queue_size=1)
+                'thruster_input', WrenchStamped, queue_size=1)
 
         rospy.loginfo("Controller loaded.")
 
@@ -177,6 +201,7 @@ class MPPINode(object):
             # First call
             self.prev_time = rospy.get_rostime()
             self.prev_state = self.update_odometry(msg)
+            self.model.set_prev_vel(self.prev_state[:, 7:13])
             self._init_odom = True
 
             # compute first action
@@ -188,13 +213,11 @@ class MPPINode(object):
             self.elapsed += (end-start)
             self.steps += 1
 
-            paths = self.controller.getPaths()
-            applied = self.controller.getApplied()
-            if self.once:
-                #self.save_paths_and_actions(paths, applied)
-                self.once = False
             # publish first control
             self.publish_control_wrench(self.forces)
+            self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
+            self.states.append(np.expand_dims(self.prev_state.copy(), axis=0))
+            self.inital_state = self.prev_state.copy()
             return
         
         time = rospy.get_rostime()
@@ -225,10 +248,22 @@ class MPPINode(object):
         if self.steps % 10 == 0:
             print("*"*5 + " MPPI Time stats " + "*"*5)
             print("* Next step   : {:.4f} (sec)".format(self.elapsed/self.steps))
-            self.model.stats()
 
         # publish first control
         self.publish_control_wrench(self.forces)
+        self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
+        self.states.append(np.expand_dims(self.state.copy(), axis=0))
+
+        if self.steps % 200 == 0:
+            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
+                np.save(f, np.concatenate(self.applied, axis=0))
+            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/init_state.npy", "wb") as f:
+                np.save(f, self.inital_state)
+            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/states.npy", "wb") as f:
+                np.save(f, np.concatenate(self.states, axis=0))
+            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/accs.npy", "wb") as f:
+                np.save(f, np.concatenate(self.accs, axis=0))
+            rospy.loginfo("Saved applied actions and inital state to file")
 
     def save_paths_and_actions(self, paths, applied):
         with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/traj.npy", "wb") as f:
@@ -270,18 +305,21 @@ class MPPINode(object):
                                   [msg.pose.pose.position.y],
                                   [msg.pose.pose.position.z]])
 
-        # Using the (x, y, z, w) format for quaternions
-        state[3:7, :] = np.array([[msg.pose.pose.orientation.x],
+        # Using the (w, x, y, z) format for quaternions
+        state[3:7, :] = np.array([[msg.pose.pose.orientation.w],
+                                  [msg.pose.pose.orientation.x],
                                   [msg.pose.pose.orientation.y],
-                                  [msg.pose.pose.orientation.z],
-                                  [msg.pose.pose.orientation.w]])
+                                  [msg.pose.pose.orientation.z]])
 
         # Linear velocity on the INERTIAL frame
         lin_vel = np.array([msg.twist.twist.linear.x,
                             msg.twist.twist.linear.y,
                             msg.twist.twist.linear.z])
         # Transform linear velocity to the BODY frame
-        rotItoB = self.model.rotBtoInp(state[3:7, 0]).T
+        rotItoB = self.model.rotBtoI_np(state[3:7, 0]).T
+        euler = euler_rot(rotItoB.T)
+        #tItoB = self.model.tItoB_np(euler)
+
         lin_vel = np.expand_dims(np.dot(rotItoB, lin_vel), axis=-1)
         # Angular velocity in the INERTIAL frame
         ang_vel = np.array([msg.twist.twist.angular.x,
@@ -289,6 +327,7 @@ class MPPINode(object):
                             msg.twist.twist.angular.z])
         # Transform angular velocity to BODY frame
         ang_vel = np.expand_dims(np.dot(rotItoB, ang_vel), axis=-1)
+        #ang_vel = np.expand_dims(ang_vel, axis=-1)
         # Store velocity vector
         state[7:13, :] = np.concatenate([lin_vel, ang_vel], axis=0)
         return state
