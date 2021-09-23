@@ -22,7 +22,7 @@
     <arg name="record" default="false" doc="Record ROS bag"/>
     <arg name="use_ned_frame" default="false" doc="If true, the reference frame is set to be NED (North-East-Down) instead of Gazebo's default ENU (East-North-Up)"/>
 
-    <arg name="lambda" default="0.15" doc="Lambda hyperparam in MPPI"/>
+    <arg name="lambda" default="0.20" doc="Lambda hyperparam in MPPI"/>
     <arg name="gamma" default="0.1" doc="decoupling factor between cost and noise"/>
     <arg name="upsilon" default="0.5" doc="augmented noise covariance"/>
     <arg name="samples" default="3000" doc="number of samples used for the controller"/>
@@ -31,9 +31,10 @@
     <arg name="model" default="$(find mppi-ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
     <arg name="conf" default="$(find mppi-ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
-    <arg name="state_dim" default="12" doc="the dimensionality of the state vector"/>
+    <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
     <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
+    <arg name="dev" default="True" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
     <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
 
     <!-- Initialize the recording fo the simulation according to the record flag  -->
@@ -44,11 +45,11 @@
 
     <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
-        <remap from="thruster_output" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+        <remap from="thruster_input" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
         <param name="model_name" value="$(arg model_name)"/>
         <param name="lambda" value="$(arg lambda)"/>
-        <param name="gamma" value="$(arg lambda)"/>
-        <param name="upsilon" value="$(arg lambda)"/>
+        <param name="gamma" value="$(arg gamma)"/>
+        <param name="upsilon" value="$(arg upsilon)"/>
         <param name="samples" value="$(arg samples)"/>
         <param name="horizon" value="$(arg horizon)"/>
         <param name="dt" value="$(arg dt)"/>
@@ -58,7 +59,7 @@
         <rosparam command="load" file="$(arg model)" ns="model"/>
         <rosparam command="load" file="$(arg conf)"/>
         <param name="log" value="$(arg log)"/>
+        <param name="dev" value="$(arg dev)"/>
         <param name="log_path" value="$(arg log_path)"/>
     </node>
-
 </launch>
