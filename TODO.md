@@ -34,14 +34,14 @@ The same input produces different response when applied to the simulator vs to t
 
 
 ## Experiments:
-
+  [ ] Figure out a way to view the trajectory of the action_sequence in rviz to see how good it is.
   [Results](RESULTS.md)
 
   ### Fossen AUV model.
 
   #### Static cost:
     - [ ] lambda variation, with/without normalization.
-    - [ ] change noise, from 100N-3000N.
+    - [ ] change noise, from 100N-Max N.
     - [ ] augment time horizon.
     - [ ] change number of samples 1000-5000.
     - [ ] Vary cost shape.
