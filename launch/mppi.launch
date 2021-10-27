@@ -28,13 +28,14 @@
     <arg name="samples" default="3000" doc="number of samples used for the controller"/>
     <arg name="horizon" default="50" doc="Prediction horizon length"/>
     <arg name="cost" default="$(find mppi-ros)/scripts/mppi_tf/config/tasks/static_cost_auv.yaml" doc="Configuration file for the cost function"/>
+    <arg name="cost_normalization" default="True" doc="Normalize the cost after the rollouts to tune lambda easier, no theoretical guarentie)"/>
     <arg name="model" default="$(find mppi-ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
     <arg name="conf" default="$(find mppi-ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
     <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
-    <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
-    <arg name="dev" default="True" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
+    <arg name="log" default="False" doc="True: logs everything in tensorboard."/>
+    <arg name="dev" default="False" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
     <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
 
     <!-- Initialize the recording fo the simulation according to the record flag  -->
@@ -56,6 +57,7 @@
         <param name="state_dim" value="$(arg state_dim)"/>
         <param name="action_dim" value="$(arg action_dim)"/>
         <rosparam command="load" file="$(arg cost)" ns="cost"/>
+        <param name="cost_norm" value="$(arg cost_normalization"/>
         <rosparam command="load" file="$(arg model)" ns="model"/>
         <rosparam command="load" file="$(arg conf)"/>
         <param name="log" value="$(arg log)"/>

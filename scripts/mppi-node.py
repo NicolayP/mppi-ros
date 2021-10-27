@@ -7,8 +7,6 @@ import argparse
 import os
 import time as t
 
-from tqdm import tqdm
-
 from controller_base import ControllerBase
 from cost import getCost
 from model import getModel
@@ -155,7 +153,7 @@ class MPPINode(object):
 
         self.controller = ControllerBase(self.model, self.cost,
                                          k=self._samples, tau=self._horizon, dt=self._dt,
-                                         s_dim=13, a_dim=self._action_dim,
+                                         s_dim=self._state_dim, a_dim=self._action_dim,
                                          lam=self._lambda, upsilon=self._upsilon,
                                          sigma=self._noise, 
                                          normalize_cost=True, filter_seq=False,
@@ -246,8 +244,8 @@ class MPPINode(object):
         self.steps += 1
 
         if self.steps % 10 == 0:
-            print("*"*5 + " MPPI Time stats " + "*"*5)
-            print("* Next step   : {:.4f} (sec)".format(self.elapsed/self.steps))
+            rospy.loginfo("*"*5 + " MPPI Time stats " + "*"*5)
+            rospy.loginfo("* Next step   : {:.4f} (sec)".format(self.elapsed/self.steps))
 
         # publish first control
         self.publish_control_wrench(self.forces)
@@ -261,8 +259,6 @@ class MPPINode(object):
                 np.save(f, self.inital_state)
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/states.npy", "wb") as f:
                 np.save(f, np.concatenate(self.states, axis=0))
-            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/accs.npy", "wb") as f:
-                np.save(f, np.concatenate(self.accs, axis=0))
             rospy.loginfo("Saved applied actions and inital state to file")
 
     def save_paths_and_actions(self, paths, applied):
