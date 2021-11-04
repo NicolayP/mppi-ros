@@ -4,7 +4,15 @@ import matplotlib.pyplot as plt
 import argparse
 
 
+def get_depth(profile):
+    return 3
+
 def plot_profile(filename):
+    with open(file, 'r') as stream:
+        profile = yaml.safe_load(stream)
+    depth = get_depth(profile)
+    
+
     pass
 
 
