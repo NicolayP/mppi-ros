@@ -5,7 +5,7 @@
     - [ ] remove unsed subroutines.
     - [ ] Model_base and children.
     - [ ] Cost_base and children.
-    - [ ] Controller_base
+    - [ ] Controller_base.
 
   Convenction:
     private attribute: self._oneTwoThree.
@@ -23,6 +23,7 @@
     - [ ] consistent attribut nameing.
 
     - Classes:
+        - [X] MPPI-node.
         - [X] ModelBase.
         - [X] PointMassModel.
         - [ ] AUVModel.
