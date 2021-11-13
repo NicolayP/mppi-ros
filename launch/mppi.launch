@@ -37,6 +37,7 @@
     <arg name="log" default="False" doc="True: logs everything in tensorboard."/>
     <arg name="dev" default="False" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
     <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
+    <arg name="gpu_idx" default="0" doc="In case of multi-gpu system, choses which one to use"/>
 
     <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
@@ -57,5 +58,6 @@
         <param name="log" value="$(arg log)"/>
         <param name="dev" value="$(arg dev)"/>
         <param name="log_path" value="$(arg log_path)"/>
+        <param name="gpu_idx" value="$(arg gpu_idx)"/>
     </node>
 </launch>

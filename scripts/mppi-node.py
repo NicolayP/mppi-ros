@@ -23,6 +23,8 @@ import rospy
 import yaml
 
 
+import tensorflow as tf
+
 def euler_rot(rotBtoI):
     """`list`: Orientation in Euler angles in radians
     as described in Fossen, 2011.
@@ -140,6 +142,14 @@ class MPPINode(object):
         else:
             rospy.logerr("No noise given")
 
+        if rospy.has_param("~gpu_idx"):
+            self.gpu_idx = rospy.get_param("~gpu_idx")
+            gpus = tf.config.list_physical_devices('GPU')
+            if len(gpus) > self.gpu_idx:
+                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
+            else:
+                rospy.logerr("GPU index out of range")
+
         rospy.loginfo("Get cost")
 
         self.cost = getCost(self.task, 
@@ -253,14 +263,14 @@ class MPPINode(object):
         self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
         self.states.append(np.expand_dims(self.state.copy(), axis=0))
 
-        if self.steps % 5 == 0:
+        if self.steps % 200 == 0:
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
                 np.save(f, np.concatenate(self.applied, axis=0))
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/init_state.npy", "wb") as f:
                 np.save(f, self.inital_state)
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/states.npy", "wb") as f:
                 np.save(f, np.concatenate(self.states, axis=0))
-            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/profile2.yaml", "w") as f:
+            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/profile_pro_gpu{}.yaml".format(self.gpu_idx), "w") as f:
                 yaml.dump(self.controller.getProfile(), f)
             self.controller.save_rp("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/transition.npz")
             rospy.loginfo("Saved applied actions and inital state to file")
