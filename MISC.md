@@ -26,9 +26,9 @@
         - [X] MPPI-node.
         - [X] ModelBase.
         - [X] PointMassModel.
-        - [ ] AUVModel.
-        - [ ] NNModel.
-        - [ ] NNAUVModel.
+        - [X] AUVModel.
+        - [X] NNModel.
+        - [X] NNAUVModel.
 
         - [ ] CostBase.
         - [ ] StaticCost.
