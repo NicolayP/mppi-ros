@@ -45,7 +45,11 @@ def plot_profile(filename, savefile, multi=False):
                 discardKeys = ['calls', 'horizon']
                 with open(filename[i*width+height], 'r') as stream:
                     profile = yaml.safe_load(stream)
-                profileList, labels = split_dict(profile, 'step', [], [], discardKeys)
+                profileList, labels = split_dict(profile,
+                                                 'step',
+                                                 [],
+                                                 [],
+                                                 discardKeys)
 
                 nb_calls = profile['calls']
                 avgProfileList = mean_profile(profileList, nb_calls)
@@ -79,7 +83,7 @@ def plot_cumulative(ax, meanTimes, labels):
                 containing the labels for every bar.
     '''
     width = 0.35       # the width of the bars: can also be len(x) sequence
-    
+
     entries = len(meanTimes)
     div = np.zeros(shape=(entries))
     totPlot = np.zeros(shape=(entries))
@@ -177,18 +181,18 @@ if __name__ == "__main__":
                         action='store_true',
                         help='if set to true, this plots all the files \
                              on the same image.')
-    
+
     parser.add_argument('-s',
                         '--save',
                         default='',
                         help='Path to save file. When flag multi is true, \
-                             then the image is saved in this file. Else\
+                             then the image is saved in this file. Else \
                              it has no effect. ')
 
     args = parser.parse_args()
 
     # Parse paths
-    
+
     fullPaths = [os.path.join(os.getcwd(), path) for path in args.path]
 
     files = []
@@ -202,13 +206,14 @@ if __name__ == "__main__":
             saveFiles.append(savePath)
         else:
             raise "One of the files doesn't exist"
-    
+
     if args.multi:
         s = os.path.join(os.getcwd(), args.dir, args.save)
         if os.path.isdir(s):
-            raise "Error, encountered a dir as savefile when multi is activated"
+            raise "Error, encountered a dir as savefile when \
+                  multi is activated"
         plot_profile(files, s, True)
-    
+
     else:
         for f, s in zip(files, saveFiles):
             plot_profile(f, s)
