@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse as ap
 import os
-import glob
+
+import math
 
 
 def split_dict(profile, stepKey, profileList, labelList, discardKeys):
@@ -32,20 +33,40 @@ def mean_profile(profileList, nbCalls):
     return profileList
 
 
-def plot_profile(filename, savefile):
-    discardKeys = ['calls', 'horizon']
-    with open(filename, 'r') as stream:
-        profile = yaml.safe_load(stream)
-    profileList, labels = split_dict(profile, 'step', [], [], discardKeys)
+def plot_profile(filename, savefile, multi=False):
+    if multi:
+        nb_plots = len(filename)
+        print(nb_plots)
+        width = 2
+        height = int(math.ceil(nb_plots/2))
+        fig, ax = plt.subplots(width, height, figsize=(15, 15))
+        for i in range(width):
+            for j in range(height):
+                discardKeys = ['calls', 'horizon']
+                with open(filename[i*width+height], 'r') as stream:
+                    profile = yaml.safe_load(stream)
+                profileList, labels = split_dict(profile, 'step', [], [], discardKeys)
 
-    nb_calls = profile['calls']
-    avgProfileList = mean_profile(profileList, nb_calls)
+                nb_calls = profile['calls']
+                avgProfileList = mean_profile(profileList, nb_calls)
 
-    plot_cumulative(avgProfileList, labels)
+                plot_cumulative(ax[i, j], avgProfileList, labels)
+    else:
+        fig, ax = plt.subplots(figsize=(15, 15))
+        discardKeys = ['calls', 'horizon']
+        with open(filename, 'r') as stream:
+            profile = yaml.safe_load(stream)
+        profileList, labels = split_dict(profile, 'step', [], [], discardKeys)
+
+        nb_calls = profile['calls']
+        avgProfileList = mean_profile(profileList, nb_calls)
+
+        plot_cumulative(ax, avgProfileList, labels)
+
     plt.savefig(savefile)
 
 
-def plot_cumulative(meanTimes, labels):
+def plot_cumulative(ax, meanTimes, labels):
     '''
         Plots cummulative barplot for the routnies profiled.
         inputs:
@@ -58,7 +79,7 @@ def plot_cumulative(meanTimes, labels):
                 containing the labels for every bar.
     '''
     width = 0.35       # the width of the bars: can also be len(x) sequence
-    fig, ax = plt.subplots(figsize=(15, 15))
+    
     entries = len(meanTimes)
     div = np.zeros(shape=(entries))
     totPlot = np.zeros(shape=(entries))
@@ -151,10 +172,18 @@ if __name__ == "__main__":
                         default='',
                         help="Path to the saving directory")
 
-    parser.add_argument('-e',
-                        '--extension',
+    parser.add_argument('-m',
+                        '--multi',
+                        action='store_true',
+                        help='if set to true, this plots all the files \
+                             on the same image.')
+    
+    parser.add_argument('-s',
+                        '--save',
                         default='',
-                        help='File extension to filter by.')
+                        help='Path to save file. When flag multi is true, \
+                             then the image is saved in this file. Else\
+                             it has no effect. ')
 
     args = parser.parse_args()
 
@@ -169,10 +198,17 @@ if __name__ == "__main__":
             files.append(path)
             file = os.path.basename(path)
             filename = os.path.splitext(file)[0]
-            savePath = os.path.join(os.getcwd(), filename + '.png')
+            savePath = os.path.join(os.getcwd(), args.dir, filename + '.png')
             saveFiles.append(savePath)
         else:
             raise "One of the files doesn't exist"
-
-    for f, s in zip(files, saveFiles):
-        plot_profile(f, s)
+    
+    if args.multi:
+        s = os.path.join(os.getcwd(), args.dir, args.save)
+        if os.path.isdir(s):
+            raise "Error, encountered a dir as savefile when multi is activated"
+        plot_profile(files, s, True)
+    
+    else:
+        for f, s in zip(files, saveFiles):
+            plot_profile(f, s)
