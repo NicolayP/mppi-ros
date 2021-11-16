@@ -1,128 +1,178 @@
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
-import argparse
+import argparse as ap
+import os
+import glob
 
 
-def get_depth(profile):
-    return 3
+def split_dict(profile, stepKey, profileList, labelList, discardKeys):
+    newDict = {}
+    for key in profile:
+        if type(profile[key]) is dict:
+            newDict[key] = profile[key]['total']
+            profileList, labelList = split_dict(profile[key],
+                                                key,
+                                                profileList,
+                                                labelList,
+                                                discardKeys)
 
-def plot_profile(filename):
-    with open(file, 'r') as stream:
+        else:
+            if key not in discardKeys:
+                newDict[key] = profile[key]
+    profileList.append(newDict)
+    labelList.append(stepKey)
+    return profileList, labelList
+
+
+def mean_profile(profileList, nbCalls):
+    for entry in profileList:
+        for key in entry:
+            entry[key] /= nbCalls
+    return profileList
+
+
+def plot_profile(filename, savefile):
+    discardKeys = ['calls', 'horizon']
+    with open(filename, 'r') as stream:
         profile = yaml.safe_load(stream)
-    depth = get_depth(profile)
-    
+    profileList, labels = split_dict(profile, 'step', [], [], discardKeys)
 
+    nb_calls = profile['calls']
+    avgProfileList = mean_profile(profileList, nb_calls)
+
+    plot_cumulative(avgProfileList, labels)
+    plt.savefig(savefile)
+
+
+def plot_cumulative(meanTimes, labels):
+    '''
+        Plots cummulative barplot for the routnies profiled.
+        inputs:
+        -------
+            - meanTimes: list, every entry is one dictionnary summary
+                at a given step.
+            - labels: list of lenght depth, containing the labels for
+                the different subroutines parsed.
+            - bar_labels: a list of len depth where every entry is a list
+                containing the labels for every bar.
+    '''
+    width = 0.35       # the width of the bars: can also be len(x) sequence
+    fig, ax = plt.subplots(figsize=(15, 15))
+    entries = len(meanTimes)
+    div = np.zeros(shape=(entries))
+    totPlot = np.zeros(shape=(entries))
+
+    for i, entry in enumerate(meanTimes):
+        toPlot, barLabels, div = prep_values(entries, i, entry, div)
+        totPlot = add_bottom(toPlot, totPlot)
+        plot_bar(ax, labels, toPlot, barLabels, width)
+
+    plot_div(ax, labels, div, width, totPlot)
+
+    ax.set_ylabel('Time (s)')
+    ax.set_title('MPPI profiling')
+    ax.legend(bbox_to_anchor=(1.1, 1.05))
+
+
+def prep_values(entries, idx, times, div):
+    len_times = len(times)-1
+    values = np.zeros(shape=(len_times, entries))
+    sorted = np.zeros(shape=(len_times, entries))
+    bar_labels = []
+    sorted_labels = []
+    # hack
+    foo = 0
+    for j, key in enumerate(times):
+        if key != "total":
+            values[j-foo, idx] = times[key]
+            bar_labels.append(key)
+        else:
+            foo = 1
+
+    div[idx] = times['total'] - np.sum(values)
+    indexes = np.argsort(values, axis=0, kind='quicksort')[:, idx]
+
+    for i in range(len_times):
+        sorted[i, idx] = values[indexes[len_times - i - 1], idx]
+        sorted_labels.append(bar_labels[indexes[len_times - i - 1]])
+
+    return sorted, sorted_labels, div
+
+
+def add_bottom(toPlot, totPlot):
+    s = np.sum(toPlot, axis=0)
+    totPlot += s
+    return totPlot
+
+
+def plot_div(ax, labels, div, width, bottom):
+    ax.bar(labels,
+           div,
+           width,
+           bottom=bottom,
+           label='diverse',
+           color='black')
     pass
 
 
+def plot_bar(ax, labels, values, barLabels, width):
+    '''
+        Plots a bar cummulative bar plot.
+        inputs:
+        -------
+            - ax, a matplotlib figure axes.
+            - labels, list of strings, the labels
+                for the different barplots.
+            - values, numpy array containing the values to plot.
+            - bar_labels, list of string labeling the differents bars.
+            - width, the width of the bars.
+    '''
+    combined = 0
+    for i, value in enumerate(values):
+        ax.bar(labels, value, width, bottom=combined, label=barLabels[i])
+        combined += value
+
+
 if __name__ == "__main__":
-    plot_profile("foo")
+    # Does not currently have support to read files from folders recursively
+    parser = ap.ArgumentParser(description='Reads a single or a set \
+                                                  of profiling files, and \
+                                                  saves the results with \
+                                                  barplots.',
+                               formatter_class=ap.ArgumentDefaultsHelpFormatter)
 
-file = "/home/pierre/workspace/uuv_ws/src/mppi-ros/log/profile.yaml"
+    parser.add_argument('path',
+                        nargs='+',
+                        help='Path of a file or a folder of files.')
 
-with open(file, 'r') as stream:
-    profile = yaml.safe_load(stream)
+    parser.add_argument('-d',
+                        '--dir',
+                        default='',
+                        help="Path to the saving directory")
 
-avg_step = profile['total']/profile['calls']
-avg_rand = profile['rand']/profile['calls']
-avg_update = profile['update']/profile['calls']
+    parser.add_argument('-e',
+                        '--extension',
+                        default='',
+                        help='File extension to filter by.')
 
-rollout_dict = profile['rollout']
-avg_rollout = rollout_dict['total']/rollout_dict['calls']
-avg_cost = rollout_dict['cost']/rollout_dict['calls']
+    args = parser.parse_args()
 
+    # Parse paths
+    
+    fullPaths = [os.path.join(os.getcwd(), path) for path in args.path]
 
-rollout_avg_cost = rollout_dict['cost']/rollout_dict['calls']
-rollout_avg_model = rollout_dict['model']['total']/rollout_dict['calls']
-rollout_avg_total = rollout_dict['total']/rollout_dict['calls']
+    files = []
+    saveFiles = []
+    for path in fullPaths:
+        if os.path.isfile(path):
+            files.append(path)
+            file = os.path.basename(path)
+            filename = os.path.splitext(file)[0]
+            savePath = os.path.join(os.getcwd(), filename + '.png')
+            saveFiles.append(savePath)
+        else:
+            raise "One of the files doesn't exist"
 
-
-model_dict = rollout_dict['model']
-
-avg_model_acc = model_dict['acc']['total']/rollout_dict['calls']
-avg_model_b2i = model_dict['b2i_trans']/rollout_dict['calls']
-avg_model_pose_dot = model_dict['pose_dot']/rollout_dict['calls']
-avg_model_total = model_dict['total']/rollout_dict['calls']
-
-
-acc_dict = model_dict['acc']
-
-acc_avg_cori = acc_dict['cori']/rollout_dict['calls']
-acc_avg_damp = acc_dict['damp']/rollout_dict['calls']
-acc_avg_rest = acc_dict['rest']/rollout_dict['calls']
-acc_avg_solv = acc_dict['solv']/rollout_dict['calls']
-acc_avg_total = acc_dict['total']/rollout_dict['calls']
-
-
-
-labels = ['total', 'rollout', 'model', 'acc']
-rand = np.array([avg_rand, 0., 0., 0.])
-update = np.array([avg_update, 0., 0., 0.])
-rollout = np.array([avg_rollout, 0., 0., 0.])
-div_tot = np.array([avg_step-avg_rand-avg_update-avg_rollout, 
-           rollout_avg_total-rollout_avg_cost-rollout_avg_model,
-           avg_model_total-avg_model_b2i-avg_model_pose_dot-avg_model_acc,
-           acc_avg_total-acc_avg_cori-acc_avg_damp-acc_avg_rest-acc_avg_solv])
-
-roll_cost = np.array([0., rollout_avg_cost, 0., 0.])
-roll_model = np.array([0., rollout_avg_model, 0., 0.])
-
-model_acc = np.array([0., 0., avg_model_acc, 0.])
-model_b2i = np.array([0., 0., avg_model_b2i, 0.])
-model_pose_dot = np.array([0., 0., avg_model_pose_dot, 0.])
-
-acc_cori = np.array([0., 0., 0., acc_avg_cori])
-acc_damp = np.array([0., 0., 0., acc_avg_damp])
-acc_rest = np.array([0., 0., 0., acc_avg_rest])
-acc_solv = np.array([0., 0., 0., acc_avg_solv])
-
-print("*"*5 + " Total " + "*"*5)
-print((div_tot)[0])
-print((div_tot+rand)[0])
-print((div_tot+rand+update)[0])
-print((div_tot+rand+update+rollout)[0])
-
-print("*"*5 + " Rollout " + "*"*5)
-print((div_tot+rand+update+rollout+roll_cost)[1])
-print((div_tot+rand+update+rollout+roll_cost+roll_model)[1])
-
-print("*"*5 + " Model " + "*"*5)
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc)[2])
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i)[2])
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i+model_pose_dot)[2])
-
-print("*"*5 + " Acc " + "*"*5)
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i+model_pose_dot+acc_cori)[3])
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i+model_pose_dot+acc_cori+acc_damp)[3])
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i+model_pose_dot+acc_cori+acc_damp+acc_rest)[3])
-print((div_tot+rand+update+rollout+roll_cost+roll_model+model_acc+model_b2i+model_pose_dot+acc_cori+acc_damp+acc_rest+acc_solv)[3])
-
-width = 0.35       # the width of the bars: can also be len(x) sequence
-
-fig, ax = plt.subplots(figsize=(15,15))
-
-ax.bar(labels, rollout, width, label='rollout')
-ax.bar(labels, rand, width, bottom=rollout, label='rand')
-ax.bar(labels, update, width, bottom=rand+rollout, label='update')
-
-ax.bar(labels, roll_model, width, label='model')
-ax.bar(labels, roll_cost, width, bottom=roll_model, label='cost')
-
-ax.bar(labels, model_acc, width, label='acc')
-ax.bar(labels, model_pose_dot, width, bottom=model_acc, label='p_dot')
-ax.bar(labels, model_b2i, width, bottom=model_acc+model_pose_dot, label='b2i')
-
-ax.bar(labels, acc_cori, width, label='cori')
-ax.bar(labels, acc_damp, width, bottom=acc_cori, label='damp')
-ax.bar(labels, acc_rest, width, bottom=acc_damp+acc_cori, label='rest')
-ax.bar(labels, acc_solv, width, bottom=acc_rest+acc_damp+acc_cori, label='solv')
-
-ax.bar(labels, div_tot, width, bottom=acc_solv+acc_rest+acc_damp+acc_cori+model_acc+model_b2i+model_pose_dot+roll_model+roll_cost+rollout+update+rand, label='diverse', color='black')
-
-ax.set_ylabel('Time (s)')
-ax.set_title('MPPI profiling')
-ax.legend(bbox_to_anchor=(1.1, 1.05))
-
-
-plt.show()
+    for f, s in zip(files, saveFiles):
+        plot_profile(f, s)
