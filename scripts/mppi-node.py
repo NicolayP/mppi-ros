@@ -172,18 +172,30 @@ class MPPINode(object):
                                          gif=False, debug=self._dev,
                                          config_file=None, task_file=self.task)
         
-        rospy.loginfo("Subscrive to odometrie topics")
+        rospy.loginfo("Setup Subscriber to odometrie topics...")
 
         # Subscribe to odometry topic
         self._odom_topic_sub = rospy.Subscriber(
             "/{}/pose_gt".format(self._uuv_name), numpy_msg(Odometry), self.odometry_callback)
 
-        rospy.loginfo("Publish to thruster topics")
+        rospy.loginfo("Setup publisher to thruster topics...")
 
         # Publish on to the thruster alocation matrix.
         self._thrust_pub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
+
+        rospy.loginfo("Trace the tensorflow computational graph...")
+        # TODO: run the controller "a blanc" to generate the tensroflow
+        # graph one before starting to run it.
+        start = t.perf_counter()
+
+        self.controller.trace()
+
+        end = t.perf_counter()
+        rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
+
+        # reset controller.
         rospy.loginfo("Controller loaded.")
 
     def publish_control_wrench(self, forces):
