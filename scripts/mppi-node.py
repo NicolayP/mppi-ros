@@ -6,6 +6,7 @@ from rospy.numpy_msg import numpy_msg
 
 import numpy as np
 import rospy
+import yaml
 
 import time as t
 import sys
@@ -119,6 +120,14 @@ class MPPINode(object):
         else:
             rospy.logerr("No noise given")
 
+        if rospy.has_param("~gpu_idx"):
+            self.gpu_idx = rospy.get_param("~gpu_idx")
+            gpus = tf.config.list_physical_devices('GPU')
+            if len(gpus) > self.gpu_idx:
+                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
+            else:
+                rospy.logerr("GPU index out of range")
+
         rospy.loginfo("Get cost")
 
         self._cost = getCost(self._task,
@@ -165,12 +174,24 @@ class MPPINode(object):
                                               numpy_msg(Odometry),
                                               self.odometry_callback)
 
-        rospy.loginfo("Publish to thruster topics")
+        rospy.loginfo("Setup publisher to thruster topics...")
 
         # Publish on to the thruster alocation matrix.
         self._thrustPub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
+
+        rospy.loginfo("Trace the tensorflow computational graph...")
+        # TODO: run the controller "a blanc" to generate the tensroflow
+        # graph one before starting to run it.
+        start = t.perf_counter()
+
+        self.controller.trace()
+
+        end = t.perf_counter()
+        rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
+
+        # reset controller.
         rospy.loginfo("Controller loaded.")
 
     def publish_control_wrench(self, forces):
