@@ -253,7 +253,7 @@ class MPPINode(object):
         self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
         self.states.append(np.expand_dims(self.state.copy(), axis=0))
 
-        if self.steps % 5 == 0:
+        if self.steps % 200 == 0:
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
                 np.save(f, np.concatenate(self.applied, axis=0))
             with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/init_state.npy", "wb") as f:
