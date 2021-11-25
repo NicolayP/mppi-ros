@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-
+import tensorflow as tf
 from geometry_msgs.msg import WrenchStamped
 from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
 
 import numpy as np
 import rospy
-import yaml
 
 import time as t
 import sys
@@ -14,14 +13,14 @@ import sys
 sys.path.append('/home/pierre/workspace/uuv_ws/\
                  src/mppi-ros/scripts/mppi_tf/scripts/')
 
-from controller_base import ControllerBase
-from cost import getCost
-from model import getModel
+from mppi_tf.scripts.controller import get_controller
+from mppi_tf.scripts.cost import get_cost
+from mppi_tf.scripts.model import get_model
 
 
 class MPPINode(object):
     def __init__(self):
-        self._state = np.zeros(13)
+        self._state = np.zeros((13, 1))
         self._forces = np.zeros(6)
 
         self._applied = []
@@ -36,6 +35,7 @@ class MPPINode(object):
 
         self._elapsed = 0.
         self._steps = 0
+        self._timeSteps = 0.
 
         if rospy.has_param("~model_name"):
             self._uuvName = rospy.get_param("~model_name")
@@ -44,7 +44,7 @@ class MPPINode(object):
             return
 
         if rospy.has_param("~samples"):
-            self._samples = rospy.get_param("~samples")
+            self._samples = tf.Variable(rospy.get_param("~samples"))
         else:
             rospy.logerr("Need to set the number of samples to use")
             return
@@ -115,6 +115,11 @@ class MPPINode(object):
         else:
             rospy.logerr("No flag for dev mode given.")
 
+        if rospy.has_param("~graph_mode"):
+            self._graphMode = rospy.get_param("~graph_mode")
+        else:
+            rospy.logerr("No flag for graph mode given.")
+
         if rospy.has_param("~noise"):
             self._noise = rospy.get_param("~noise")
         else:
@@ -130,7 +135,7 @@ class MPPINode(object):
 
         rospy.loginfo("Get cost")
 
-        self._cost = getCost(self._task,
+        self._cost = get_cost(self._task,
                              self._lambda,
                              self._gamma,
                              self._upsilon,
@@ -138,7 +143,7 @@ class MPPINode(object):
 
         rospy.loginfo("Get Model")
 
-        self._model = getModel(self._modelConf,
+        self._model = get_model(self._modelConf,
                                self._samples,
                                self._dt,
                                True,
@@ -147,24 +152,25 @@ class MPPINode(object):
 
         rospy.loginfo("Get controller")
 
-        self._controller = ControllerBase(self._model,
-                                          self._cost,
+        self._controller = get_controller(model=self._model,
+                                          cost=self._cost,
                                           k=self._samples,
                                           tau=self._horizon,
                                           dt=self._dt,
-                                          s_dim=self._stateDim,
-                                          a_dim=self._actionDim,
+                                          sDim=self._stateDim,
+                                          aDim=self._actionDim,
                                           lam=self._lambda,
                                           upsilon=self._upsilon,
                                           sigma=self._noise,
-                                          normalize_cost=True,
-                                          filter_seq=False,
+                                          normalizeCost=True,
+                                          filterSeq=False,
                                           log=self._log,
-                                          log_path=self._logPath,
+                                          logPath=self._logPath,
                                           gif=False,
+                                          graphMode=self._graphMode,
                                           debug=self._dev,
-                                          config_file=None,
-                                          task_file=self._task)
+                                          configFile=None,
+                                          taskFile=self._task)
 
         rospy.loginfo("Subscrive to odometrie topics")
 
@@ -186,7 +192,7 @@ class MPPINode(object):
         # graph one before starting to run it.
         start = t.perf_counter()
 
-        self.controller.trace()
+        self._controller.trace()
 
         end = t.perf_counter()
         rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
@@ -219,9 +225,15 @@ class MPPINode(object):
 
         end = t.perf_counter()
         self._elapsed += (end-start)
+        self._timeSteps += 1
         self._steps += 1
-
         self.publish_control_wrench(self._forces)
+
+        if self._steps % 10 == 0:
+            rospy.loginfo("*"*5 + " MPPI Time stats " + "*"*5)
+            rospy.loginfo("* Next step : {:.4f} (sec)".format(self._elapsed/self._timeSteps))
+            self._elapsed = 0.
+            self._timeSteps = 0
 
     def odometry_callback(self, msg):
         # If first call, we need to boot the controller.
@@ -229,6 +241,7 @@ class MPPINode(object):
             # First call
             self._prevTime = rospy.get_rostime()
             self._prevState = self.update_odometry(msg)
+            self._state = self._prevState.copy()
             self._initOdom = True
             self._initalState = self._prevState.copy()
 
