@@ -10,12 +10,8 @@ import rospy
 import time as t
 import sys
 
-sys.path.append('/home/pierre/workspace/uuv_ws/\
-                 src/mppi-ros/scripts/mppi_tf/scripts/')
-
-from mppi_tf.scripts.controller import get_controller
-from mppi_tf.scripts.cost import get_cost
-from mppi_tf.scripts.model import get_model
+# sys.path.append('/home/pierre/workspace/uuv_ws/\
+#                  src/mppi-ros/scripts/mppi_tf/scripts/')
 
 
 class MPPINode(object):
@@ -36,6 +32,21 @@ class MPPINode(object):
         self._elapsed = 0.
         self._steps = 0
         self._timeSteps = 0.
+
+        rospy.loginfo("Setup Controller...")
+        rospy.loginfo("Set GPU")
+        if rospy.has_param("~gpu_idx"):
+            self.gpu_idx = rospy.get_param("~gpu_idx")
+            gpus = tf.config.list_physical_devices('GPU')
+            if len(gpus) > self.gpu_idx:
+                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
+            else:
+                rospy.logerr("GPU index out of range")
+        rospy.loginfo("Done")
+        # Import after setting the GPU otherwise tensorflow complains.
+        from mppi_tf.scripts.controller import get_controller
+        from mppi_tf.scripts.cost import get_cost
+        from mppi_tf.scripts.model import get_model
 
         if rospy.has_param("~model_name"):
             self._uuvName = rospy.get_param("~model_name")
@@ -124,14 +135,6 @@ class MPPINode(object):
             self._noise = rospy.get_param("~noise")
         else:
             rospy.logerr("No noise given")
-
-        if rospy.has_param("~gpu_idx"):
-            self.gpu_idx = rospy.get_param("~gpu_idx")
-            gpus = tf.config.list_physical_devices('GPU')
-            if len(gpus) > self.gpu_idx:
-                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
-            else:
-                rospy.logerr("GPU index out of range")
 
         rospy.loginfo("Get cost")
 
