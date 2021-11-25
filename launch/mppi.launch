@@ -34,15 +34,11 @@
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
     <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
-    <arg name="log" default="False" doc="True: logs everything in tensorboard."/>
-    <arg name="dev" default="False" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
+    <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
+    <arg name="dev" default="True" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
+    <arg name="graph_mode" default="False" doc="Enables tensorflow graph mode computation. Depending on the model, this can considerable speedup the controller."/>
     <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
-
-    <!-- Initialize the recording fo the simulation according to the record flag  -->
-    <include file="$(find bluerov2_control)/launch/record.launch">
-      <arg name="record" value="$(arg record)"/>
-      <arg name="use_ned_frame" value="$(arg use_ned_frame)"/>
-    </include>
+    <arg name="gpu_idx" default="0" doc="In case of multi-gpu system, choses which one to use"/>
 
     <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
@@ -62,6 +58,8 @@
         <rosparam command="load" file="$(arg conf)"/>
         <param name="log" value="$(arg log)"/>
         <param name="dev" value="$(arg dev)"/>
+        <param name="graph_mode" value="$(arg graph_mode)"/>
         <param name="log_path" value="$(arg log_path)"/>
+        <param name="gpu_idx" value="$(arg gpu_idx)"/>
     </node>
 </launch>
