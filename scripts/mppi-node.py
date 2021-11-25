@@ -1,68 +1,50 @@
 #!/usr/bin/env python3
-
-import sys
-sys.path.append('/home/pierre/workspace/uuv_ws/src/mppi-ros/scripts/mppi_tf/scripts/')
-
-import argparse
-import os
-import time as t
-
-from controller_base import ControllerBase
-from cost import getCost
-from model import getModel
-
-from geometry_msgs.msg import WrenchStamped, PoseStamped, TwistStamped, \
-    Vector3, Quaternion, Pose
-from std_msgs.msg import Time
+import tensorflow as tf
+from geometry_msgs.msg import WrenchStamped
 from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
 
 import numpy as np
-from quaternion import as_euler_angles
 import rospy
 
+import time as t
+import sys
 
-def euler_rot(rotBtoI):
-    """`list`: Orientation in Euler angles in radians
-    as described in Fossen, 2011.
-    """
-    # Rotation matrix from BODY to INERTIAL
-    rot = rotBtoI
-    # Roll
-    roll = np.arctan2(rot[2, 1], rot[2, 2])
-    # Pitch, treating singularity cases
-    den = np.sqrt(1 - rot[2, 0]**2)
-    pitch = -np.arctan(rot[2, 0] / den)
-    # Yaw
-    yaw = np.arctan2(rot[1, 0], rot[0, 0])
-    return np.array([roll, pitch, yaw])
+sys.path.append('/home/pierre/workspace/uuv_ws/\
+                 src/mppi-ros/scripts/mppi_tf/scripts/')
+
+from mppi_tf.scripts.controller import get_controller
+from mppi_tf.scripts.cost import get_cost
+from mppi_tf.scripts.model import get_model
+
 
 class MPPINode(object):
     def __init__(self):
-        self.state = np.zeros(13)
-        self.forces = np.zeros(6)
+        self._state = np.zeros((13, 1))
+        self._forces = np.zeros(6)
 
-        self.applied = []
-        self.states = []
-        self.accs = []
+        self._applied = []
+        self._states = []
+        self._accs = []
 
-        self._init_odom = False
+        self._initOdom = False
 
         self._namespace = "rexrov2"
 
-        self.once = True
+        self._once = True
 
-        self.elapsed = 0.
-        self.steps = 0
+        self._elapsed = 0.
+        self._steps = 0
+        self._timeSteps = 0.
 
         if rospy.has_param("~model_name"):
-            self._uuv_name = rospy.get_param("~model_name")
+            self._uuvName = rospy.get_param("~model_name")
         else:
             rospy.logerr("Need to specify the model name to publish on")
             return
 
         if rospy.has_param("~samples"):
-            self._samples = rospy.get_param("~samples")
+            self._samples = tf.Variable(rospy.get_param("~samples"))
         else:
             rospy.logerr("Need to set the number of samples to use")
             return
@@ -98,25 +80,25 @@ class MPPINode(object):
             return
 
         if rospy.has_param("~state_dim"):
-            self._state_dim = rospy.get_param("~state_dim")
+            self._stateDim = rospy.get_param("~state_dim")
         else:
             rospy.logerr("Don't know the state dimensionality.")
             return
 
         if rospy.has_param("~action_dim"):
-            self._action_dim = rospy.get_param("~action_dim")
+            self._actionDim = rospy.get_param("~action_dim")
         else:
             rospy.logerr("Don't know the actuator dimensionality.")
             return
 
         if rospy.has_param("~cost"):
-            self.task = rospy.get_param("~cost")
+            self._task = rospy.get_param("~cost")
         else:
             rospy.logerr("No cost function given.")
             return
 
         if rospy.has_param("~model"):
-            self.model_conf = rospy.get_param("~model")
+            self._modelConf = rospy.get_param("~model")
         else:
             rospy.logerr("No internal model given.")
             return
@@ -124,7 +106,7 @@ class MPPINode(object):
         if rospy.has_param("~log"):
             self._log = rospy.get_param("~log")
             if rospy.has_param("~log_path"):
-                self._log_path = rospy.get_param("~log_path")
+                self._logPath = rospy.get_param("~log_path")
         else:
             rospy.logerr("No log flag given.")
 
@@ -133,150 +115,169 @@ class MPPINode(object):
         else:
             rospy.logerr("No flag for dev mode given.")
 
+        if rospy.has_param("~graph_mode"):
+            self._graphMode = rospy.get_param("~graph_mode")
+        else:
+            rospy.logerr("No flag for graph mode given.")
 
         if rospy.has_param("~noise"):
             self._noise = rospy.get_param("~noise")
         else:
             rospy.logerr("No noise given")
 
+        if rospy.has_param("~gpu_idx"):
+            self.gpu_idx = rospy.get_param("~gpu_idx")
+            gpus = tf.config.list_physical_devices('GPU')
+            if len(gpus) > self.gpu_idx:
+                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
+            else:
+                rospy.logerr("GPU index out of range")
+
         rospy.loginfo("Get cost")
 
-        self.cost = getCost(self.task, 
-                            self._lambda, self._gamma, self._upsilon, 
-                            self._noise)
-        
+        self._cost = get_cost(self._task,
+                             self._lambda,
+                             self._gamma,
+                             self._upsilon,
+                             self._noise)
+
         rospy.loginfo("Get Model")
 
-        self.model = getModel(self.model_conf, self._samples, self._dt, True, self._action_dim, self.model_conf['type'])
-        
+        self._model = get_model(self._modelConf,
+                               self._samples,
+                               self._dt,
+                               True,
+                               self._actionDim,
+                               self._modelConf['type'])
+
         rospy.loginfo("Get controller")
 
-        self.controller = ControllerBase(self.model, self.cost,
-                                         k=self._samples, tau=self._horizon, dt=self._dt,
-                                         s_dim=self._state_dim, a_dim=self._action_dim,
-                                         lam=self._lambda, upsilon=self._upsilon,
-                                         sigma=self._noise, 
-                                         normalize_cost=True, filter_seq=False,
-                                         log=self._log, log_path=self._log_path,
-                                         gif=False, debug=self._dev,
-                                         config_file=None, task_file=self.task)
-        
+        self._controller = get_controller(model=self._model,
+                                          cost=self._cost,
+                                          k=self._samples,
+                                          tau=self._horizon,
+                                          dt=self._dt,
+                                          sDim=self._stateDim,
+                                          aDim=self._actionDim,
+                                          lam=self._lambda,
+                                          upsilon=self._upsilon,
+                                          sigma=self._noise,
+                                          normalizeCost=True,
+                                          filterSeq=False,
+                                          log=self._log,
+                                          logPath=self._logPath,
+                                          gif=False,
+                                          graphMode=self._graphMode,
+                                          debug=self._dev,
+                                          configFile=None,
+                                          taskFile=self._task)
+
         rospy.loginfo("Subscrive to odometrie topics")
 
         # Subscribe to odometry topic
-        self._odom_topic_sub = rospy.Subscriber(
-            "/{}/pose_gt".format(self._uuv_name), numpy_msg(Odometry), self.odometry_callback)
+        self._odomTopicSub = rospy.Subscriber("/{}/pose_gt".
+                                              format(self._uuvName),
+                                              numpy_msg(Odometry),
+                                              self.odometry_callback)
 
-        rospy.loginfo("Publish to thruster topics")
+        rospy.loginfo("Setup publisher to thruster topics...")
 
         # Publish on to the thruster alocation matrix.
-        self._thrust_pub = rospy.Publisher(
+        self._thrustPub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
+
+        rospy.loginfo("Trace the tensorflow computational graph...")
+        # TODO: run the controller "a blanc" to generate the tensroflow
+        # graph one before starting to run it.
+        start = t.perf_counter()
+
+        self._controller.trace()
+
+        end = t.perf_counter()
+        rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
+
+        # reset controller.
         rospy.loginfo("Controller loaded.")
 
     def publish_control_wrench(self, forces):
-        if not self.odom_is_init:
+        if not self._initOdom:
             return
 
-        force_msg = WrenchStamped()
-        force_msg.header.stamp = rospy.Time.now()
-        force_msg.header.frame_id = '{}/{}'.format(self._namespace, 'base_link')
+        forceMsg = WrenchStamped()
+        forceMsg.header.stamp = rospy.Time.now()
+        forceMsg.header.frame_id = '{}/{}'.format(self._namespace, 'base_link')
         # Force
-        force_msg.wrench.force.x = forces[0]
-        force_msg.wrench.force.y = forces[1]
-        force_msg.wrench.force.z = forces[2]
+        forceMsg.wrench.force.x = forces[0]
+        forceMsg.wrench.force.y = forces[1]
+        forceMsg.wrench.force.z = forces[2]
         # Torque
-        force_msg.wrench.torque.x = forces[3]
-        force_msg.wrench.torque.y = forces[4]
-        force_msg.wrench.torque.z = forces[5]
+        forceMsg.wrench.torque.x = forces[3]
+        forceMsg.wrench.torque.y = forces[4]
+        forceMsg.wrench.torque.z = forces[5]
 
-        self._thrust_pub.publish(force_msg)
+        self._thrustPub.publish(forceMsg)
 
-    def odometry_callback(self, msg):
-
-        if not self._init_odom:
-            # First call
-            self.prev_time = rospy.get_rostime()
-            self.prev_state = self.update_odometry(msg)
-            self.model.set_prev_vel(self.prev_state[:, 7:13])
-            self._init_odom = True
-
-            # compute first action
-            start = t.perf_counter()
-
-            self.forces = self.controller.next(self.prev_state)
-
-            end = t.perf_counter()
-            self.elapsed += (end-start)
-            self.steps += 1
-
-            # publish first control
-            self.publish_control_wrench(self.forces)
-            self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
-            self.states.append(np.expand_dims(self.prev_state.copy(), axis=0))
-            self.inital_state = self.prev_state.copy()
-            return
-        
-        time = rospy.get_rostime()
-        dt = time - self.prev_time
-
-        if dt.to_sec() < self._dt:
-            return
-        self.prev_time = time
-
-        self.state = self.update_odometry(msg)
-
-        #rospy.loginfo("State: {}".format(self.state))
-        # save the transition
-        self.controller.save(self.prev_state, np.expand_dims(self.forces, -1), self.state)
-
-        # update previous state
-        self.prev_state = self.state
-
+    def call_controller(self, state):
         start = t.perf_counter()
 
-        # compute first action
-        self.forces = self.controller.next(self.prev_state)
+        self._forces = self._controller.next(state)
 
         end = t.perf_counter()
-        self.elapsed += (end-start)
-        self.steps += 1
+        self._elapsed += (end-start)
+        self._timeSteps += 1
+        self._steps += 1
+        self.publish_control_wrench(self._forces)
 
-        if self.steps % 10 == 0:
+        if self._steps % 10 == 0:
             rospy.loginfo("*"*5 + " MPPI Time stats " + "*"*5)
-            rospy.loginfo("* Next step   : {:.4f} (sec)".format(self.elapsed/self.steps))
+            rospy.loginfo("* Next step : {:.4f} (sec)".format(self._elapsed/self._timeSteps))
+            self._elapsed = 0.
+            self._timeSteps = 0
 
-        # publish first control
-        self.publish_control_wrench(self.forces)
-        self.applied.append(np.expand_dims(self.forces.copy(), axis=0))
-        self.states.append(np.expand_dims(self.state.copy(), axis=0))
+    def odometry_callback(self, msg):
+        # If first call, we need to boot the controller.
+        if not self._initOdom:
+            # First call
+            self._prevTime = rospy.get_rostime()
+            self._prevState = self.update_odometry(msg)
+            self._state = self._prevState.copy()
+            self._initOdom = True
+            self._initalState = self._prevState.copy()
 
-        if self.steps % 200 == 0:
-            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
-                np.save(f, np.concatenate(self.applied, axis=0))
-            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/init_state.npy", "wb") as f:
-                np.save(f, self.inital_state)
-            with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/states.npy", "wb") as f:
-                np.save(f, np.concatenate(self.states, axis=0))
-            rospy.loginfo("Saved applied actions and inital state to file")
+        else:
+            time = rospy.get_rostime()
+            dt = time - self._prevTime
 
-    def save_paths_and_actions(self, paths, applied):
-        with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/traj.npy", "wb") as f:
-            quats = paths[:, :, 3:7]
-            paths_euler = np.zeros(shape=(paths.shape[0], paths.shape[1], 12, 1))
-            for i, entry in enumerate(quats):
-                for j, el in enumerate(entry):
-                    q = np.quaternion(el[0], el[1], el[2], el[3])
-                    euler = as_euler_angles(q)
-                    paths_euler[i, j, 0:3] = paths[i, j, 0:3]
-                    paths_euler[i, j, 3:6] = np.expand_dims(euler, axis=-1)
-                    paths_euler[i, j, 6:12] = paths[i, j, 7:13]
-            np.save(f, paths_euler)
-            print(paths_euler.shape)
-        with open("/home/pierre/workspace/uuv_ws/src/mppi-ros/log/applied.npy", "wb") as f:
-            np.save(f, applied)
-            print(applied.shape)
+            if dt.to_sec() < self._dt:
+                return
+            self._prevTime = time
+            self._state = self.update_odometry(msg)
+            # save the transition
+            self._controller.save(self._prevState,
+                                  np.expand_dims(self._forces, -1),
+                                  self._state)
+            # update previous state
+            self._prevState = self._state
+
+        self.call_controller(self._prevState)
+
+        self._applied.append(np.expand_dims(self._forces.copy(), axis=0))
+        self._states.append(np.expand_dims(self._state.copy(), axis=0))
+
+        if self._steps % 200 == 0:
+            self.log()
+
+    def log(self):
+        path = "/home/pierre/workspace/uuv_ws/src/mppi-ros/log/"
+        self._controller.save_rp("{}transitons.npz".format(path))
+        with open("{}applied.npy".format(path), "wb") as f:
+            np.save(f, np.concatenate(self._applied, axis=0))
+        with open("{}init_state.npy".format(path), "wb") as f:
+            np.save(f, self._initalState)
+        with open("{}states.npy".format(path), "wb") as f:
+            np.save(f, np.concatenate(self._states, axis=0))
+        rospy.loginfo("Saved applied actions and inital state to file")
 
     def update_odometry(self, msg):
         """Odometry topic subscriber callback function."""
@@ -287,11 +288,11 @@ class MPPINode(object):
         # linear velocity -> world frame
         # angular velocity -> world frame
 
-        if self.model.inertial_frame_id != msg.header.frame_id:
+        if self._model._inertialFrameId != msg.header.frame_id:
             raise rospy.ROSException('The inertial frame ID used by the '
                                      'vehicle model does not match the '
                                      'odometry frame ID, vehicle=%s, odom=%s' %
-                                     (self.model.inertial_frame_id,
+                                     (self._model._inertialFrameId,
                                       msg.header.frame_id))
 
         # Update the velocity vector
@@ -308,30 +309,23 @@ class MPPINode(object):
                                   [msg.pose.pose.orientation.z]])
 
         # Linear velocity on the INERTIAL frame
-        lin_vel = np.array([msg.twist.twist.linear.x,
-                            msg.twist.twist.linear.y,
-                            msg.twist.twist.linear.z])
+        linVel = np.array([msg.twist.twist.linear.x,
+                           msg.twist.twist.linear.y,
+                           msg.twist.twist.linear.z])
         # Transform linear velocity to the BODY frame
-        rotItoB = self.model.rotBtoI_np(state[3:7, 0]).T
-        euler = euler_rot(rotItoB.T)
-        #tItoB = self.model.tItoB_np(euler)
+        rotItoB = self._model.rotBtoI_np(state[3:7, 0]).T
 
-        lin_vel = np.expand_dims(np.dot(rotItoB, lin_vel), axis=-1)
+        linVel = np.expand_dims(np.dot(rotItoB, linVel), axis=-1)
         # Angular velocity in the INERTIAL frame
-        ang_vel = np.array([msg.twist.twist.angular.x,
-                            msg.twist.twist.angular.y,
-                            msg.twist.twist.angular.z])
+        angVel = np.array([msg.twist.twist.angular.x,
+                           msg.twist.twist.angular.y,
+                           msg.twist.twist.angular.z])
         # Transform angular velocity to BODY frame
-        ang_vel = np.expand_dims(np.dot(rotItoB, ang_vel), axis=-1)
-        #ang_vel = np.expand_dims(ang_vel, axis=-1)
+        angVel = np.expand_dims(np.dot(rotItoB, angVel), axis=-1)
         # Store velocity vector
-        state[7:13, :] = np.concatenate([lin_vel, ang_vel], axis=0)
+        state[7:13, :] = np.concatenate([linVel, angVel], axis=0)
         return state
 
-    @property
-    def odom_is_init(self):
-        """`bool`: `True` if the first odometry message was received"""
-        return self._init_odom
 
 if __name__ == "__main__":
     print("Mppi - DP Controller")
