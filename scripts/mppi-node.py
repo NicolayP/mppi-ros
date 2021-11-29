@@ -200,6 +200,9 @@ class MPPINode(object):
         end = t.perf_counter()
         rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
 
+        rospy.loginfo("Proifile the controller...")
+        self._controller.profile()
+
         # reset controller.
         rospy.loginfo("Controller loaded.")
 
