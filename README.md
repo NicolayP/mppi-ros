@@ -1,4 +1,4 @@
-# MPPI-ROS
+# MPPI_ROS
 
 This package contains the necessary ros instruction to run the mppi controller. 
 

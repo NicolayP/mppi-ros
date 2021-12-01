@@ -11,7 +11,7 @@ import time as t
 import sys
 
 # sys.path.append('/home/pierre/workspace/uuv_ws/\
-#                  src/mppi-ros/scripts/mppi_tf/scripts/')
+#                  src/mppi_ros/scripts/mppi_tf/scripts/')
 
 
 class MPPINode(object):
@@ -272,7 +272,7 @@ class MPPINode(object):
             self.log()
 
     def log(self):
-        path = "/home/pierre/workspace/uuv_ws/src/mppi-ros/log/"
+        path = "/home/pierre/workspace/uuv_ws/src/mppi_ros/log/"
         self._controller.save_rp("{}transitons.npz".format(path))
         with open("{}applied.npy".format(path), "wb") as f:
             np.save(f, np.concatenate(self._applied, axis=0))

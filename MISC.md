@@ -23,7 +23,7 @@
     - [ ] consistent attribut nameing.
 
     - Classes:
-        - [X] MPPI-node.
+        - [X] MPPI_node.
         - [X] ModelBase.
         - [X] PointMassModel.
         - [X] AUVModel.

@@ -1,4 +1,4 @@
-# MPPI-ROS node
+# MPPI_ROS node
 
 - [X] include the controller.
 - [X] load the params.

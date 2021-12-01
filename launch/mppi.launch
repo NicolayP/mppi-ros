@@ -10,7 +10,7 @@
     ```
 
     ```
-    roslaunch mppi-ros start_mppi_controller.launch
+    roslaunch mppi_ros start_mppi_controller.launch
     ```
 -->
 <launch>
@@ -27,20 +27,20 @@
     <arg name="upsilon" default="0.5" doc="augmented noise covariance"/>
     <arg name="samples" default="3000" doc="number of samples used for the controller"/>
     <arg name="horizon" default="50" doc="Prediction horizon length"/>
-    <arg name="cost" default="$(find mppi-ros)/scripts/mppi_tf/config/tasks/static_cost_auv.yaml" doc="Configuration file for the cost function"/>
+    <arg name="cost" default="$(find mppi_ros)/scripts/mppi_tf/config/tasks/static_cost_auv.yaml" doc="Configuration file for the cost function"/>
     <arg name="cost_normalization" default="True" doc="Normalize the cost after the rollouts to tune lambda easier, no theoretical guarentie)"/>
-    <arg name="model" default="$(find mppi-ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
-    <arg name="conf" default="$(find mppi-ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
+    <arg name="model" default="$(find mppi_ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
+    <arg name="conf" default="$(find mppi_ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
     <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
     <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
     <arg name="dev" default="True" doc="Enable dev mode. Log_path is augmented with a /dev tag."/>
     <arg name="graph_mode" default="False" doc="Enables tensorflow graph mode computation. Depending on the model, this can considerable speedup the controller."/>
-    <arg name="log_path" default="$(find mppi-ros)/log" doc="Path to save the tensorboard log"/>
+    <arg name="log_path" default="$(find mppi_ros)/log" doc="Path to save the tensorboard log"/>
     <arg name="gpu_idx" default="0" doc="In case of multi-gpu system, choses which one to use"/>
 
-    <node name="mppi" pkg="mppi-ros" type="mppi-node.py" output="screen">
+    <node name="mppi" pkg="mppi_ros" type="mppi_node.py" output="screen">
         <remap from="odom" to="$(arg uuv_name)/pose_gt"/>
         <remap from="thruster_input" to="$(arg uuv_name)/thruster_manager/input_stamped"/>
         <param name="model_name" value="$(arg model_name)"/>
