@@ -3,6 +3,8 @@ import tensorflow as tf
 from geometry_msgs.msg import WrenchStamped
 from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
+from mppi_ros.msg import Transition
+from mppi_ros.srv import UpdateModelParam
 
 import numpy as np
 import rospy
@@ -13,6 +15,32 @@ import sys
 # sys.path.append('/home/pierre/workspace/uuv_ws/\
 #                  src/mppi_ros/scripts/mppi_tf/scripts/')
 
+def rotBtoI_np(quat):
+    w = quat[0]
+    x = quat[1]
+    y = quat[2]
+    z = quat[3]
+
+    return np.array([
+                        [1 - 2 * (y**2 + z**2),
+                        2 * (x * y - z * w),
+                        2 * (x * z + y * w)],
+                        [2 * (x * y + z * w),
+                        1 - 2 * (x**2 + z**2),
+                        2 * (y * z - x * w)],
+                        [2 * (x * z - y * w),
+                        2 * (y * z + x * w),
+                        1 - 2 * (x**2 + y**2)]
+                    ])
+
+
+def tItoB_np(euler):
+        r = euler[0]
+        p = euler[1]
+        T = np.array([[1., 0., -np.sin(p)],
+                      [0., np.cos(r), np.cos(p) * np.sin(r)],
+                      [0., -np.sin(r), np.cos(p) * np.cos(r)]])
+        return T
 
 class MPPINode(object):
     def __init__(self):
@@ -152,6 +180,10 @@ class MPPINode(object):
                                True,
                                self._actionDim,
                                self._modelConf['type'])
+        if "learnable" in self._modelConf:
+            self._learnable = self._modelConf["learnable"]
+        else:
+            self._learnable = False
 
         rospy.loginfo("Get controller")
 
@@ -175,13 +207,14 @@ class MPPINode(object):
                                           configFile=None,
                                           taskFile=self._task)
 
-        rospy.loginfo("Subscrive to odometrie topics")
+        rospy.loginfo("Subscrive to odometrie topics...")
 
         # Subscribe to odometry topic
         self._odomTopicSub = rospy.Subscriber("/{}/pose_gt".
                                               format(self._uuvName),
                                               numpy_msg(Odometry),
                                               self.odometry_callback)
+        rospy.loginfo("Done")
 
         rospy.loginfo("Setup publisher to thruster topics...")
 
@@ -189,13 +222,28 @@ class MPPINode(object):
         self._thrustPub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
+        self._transPub = rospy.Publisher(
+                '/mppi/transition',
+                Transition,
+                queue_size=1
+        )
+        rospy.loginfo("Done")
+        
+        if self._learnable:
+            rospy.loginfo("Creating client for update service..")
+            rospy.wait_for_service('/mppi/update_model_params')
+            try:
+                self.updateModelSrv = rospy.ServiceProxy('/mppi/update_model_params', UpdateModelParam)
+            except rospy.ServiceException as e:
+                print("Service call failed: %s"%e)
+            rospy.loginfo("Done")
 
         rospy.loginfo("Trace the tensorflow computational graph...")
         # TODO: run the controller "a blanc" to generate the tensroflow
         # graph one before starting to run it.
         start = t.perf_counter()
-
-        self._controller.trace()
+        if self._graphMode:
+            self._controller.trace()
 
         end = t.perf_counter()
         rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
@@ -220,6 +268,20 @@ class MPPINode(object):
         forceMsg.wrench.torque.z = forces[5]
 
         self._thrustPub.publish(forceMsg)
+
+    def publish_transition(self, x, u, xNext):
+
+        # Header
+        transMsg = Transition()
+        transMsg.header.stamp = rospy.Time.now()
+        transMsg.header.frame_id = '{}/{}'.format(self._namespace, 'base_link')
+
+        # Transition
+        transMsg.x = x
+        transMsg.u = u
+        transMsg.xNext = xNext
+
+        self._transPub.publish(transMsg)
 
     def call_controller(self, state):
         start = t.perf_counter()
@@ -256,10 +318,17 @@ class MPPINode(object):
                 return
             self._prevTime = time
             self._state = self.update_odometry(msg)
+
             # save the transition
             self._controller.save(self._prevState,
                                   np.expand_dims(self._forces, -1),
                                   self._state)
+
+            # Send the data for the learner.
+            self.publish_transition(self._prevState,
+                                    np.expand_dims(self._forces, -1),
+                                    self._state)
+
             # update previous state
             self._prevState = self._state
 
@@ -268,8 +337,20 @@ class MPPINode(object):
         self._applied.append(np.expand_dims(self._forces.copy(), axis=0))
         self._states.append(np.expand_dims(self._state.copy(), axis=0))
 
-        if self._steps % 200 == 0:
+        if self._steps % 10 == 0:
+            # should place that in a separte loop.
             self.log()
+            if self._learnable:
+                rospy.loginfo("Updating parameter model")
+                rospy.wait_for_service('/mppi/update_model_params')
+                try:
+                    rospy.loginfo("RESUQEST")
+                    # self.updateModelSrv = rospy.ServiceProxy('/mppi/update_model_params', UpdateModelParam)
+                    resp = self.updateModelSrv(True)
+                    rospy.loginfo("RESPONSE")
+                    self._model.set_var(resp.weights)
+                except rospy.ServiceException as e:
+                    print("Service call failed: %s"%e)
 
     def log(self):
         path = "/home/pierre/workspace/uuv_ws/src/mppi_ros/log/"
@@ -316,7 +397,7 @@ class MPPINode(object):
                            msg.twist.twist.linear.y,
                            msg.twist.twist.linear.z])
         # Transform linear velocity to the BODY frame
-        rotItoB = self._model.rotBtoI_np(state[3:7, 0]).T
+        rotItoB = rotBtoI_np(state[3:7, 0]).T
 
         linVel = np.expand_dims(np.dot(rotItoB, linVel), axis=-1)
         # Angular velocity in the INERTIAL frame

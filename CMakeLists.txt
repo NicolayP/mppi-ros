@@ -50,6 +50,9 @@ catkin_python_setup()
 add_message_files(
    FILES
    Transition.msg
+   Tensor1d.msg
+   Tensor2d.msg
+   NNLayer.msg
 )
 
 ## Generate services in the 'srv' folder
