@@ -1,7 +1,11 @@
 <launch>
     <arg name="model" default="$(find mppi_ros)/scripts/mppi_tf/config/models/auv_nn_model.yaml" doc="The internal model used by mppi"/>
+    <arg name="log" default="True" doc="True: logs everything in tensorboard."/>
+    <arg name="log_path" default="$(find mppi_ros)/log" doc="Path to save the tensorboard log"/>
 
     <node name="mppi_learner" pkg="mppi_ros" type="mppi_learner.py" output="screen">
         <rosparam command="load" file="$(arg model)" ns="model"/>
+        <param name="log" value="$(arg log)"/>
+        <param name="log_path" value="$(arg log_path)"/>
     </node>
 </launch>

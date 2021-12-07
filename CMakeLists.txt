@@ -58,7 +58,10 @@ add_message_files(
 ## Generate services in the 'srv' folder
 add_service_files(
    FILES
+   SetLogPath.srv
+   SaveRb.srv
    UpdateModelParam.srv
+   WriteWeights.srv
 )
 
 ## Generate actions in the 'action' folder

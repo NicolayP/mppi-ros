@@ -1,19 +1,32 @@
 #!/usr/bin/env python3
+import rospy
 import tensorflow as tf
+
+rospy.loginfo("Set GPU")
+if rospy.has_param("~gpu_idx"):
+    gpu_idx = rospy.get_param("~gpu_idx")
+    gpus = tf.config.list_physical_devices('GPU')
+    if len(gpus) > gpu_idx:
+        tf.config.set_visible_devices(gpus[gpu_idx], 'GPU')
+    else:
+        rospy.logerr("GPU index out of range")
+rospy.loginfo("Done")
+
+# Import after setting the GPU otherwise tensorflow complains.
+from mppi_tf.scripts.src.controller import get_controller
+from mppi_tf.scripts.src.cost import get_cost
+from mppi_tf.scripts.src.model import get_model
+
 from geometry_msgs.msg import WrenchStamped
 from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
 from mppi_ros.msg import Transition
-from mppi_ros.srv import UpdateModelParam
+from mppi_ros.srv import UpdateModelParam, SaveRb, WriteWeights, WriteWeightsResponse, SetLogPath
 
 import numpy as np
-import rospy
-
 import time as t
-import sys
-
-# sys.path.append('/home/pierre/workspace/uuv_ws/\
-#                  src/mppi_ros/scripts/mppi_tf/scripts/')
+from datetime import datetime
+import os
 
 def rotBtoI_np(quat):
     w = quat[0]
@@ -42,6 +55,7 @@ def tItoB_np(euler):
                       [0., -np.sin(r), np.cos(p) * np.cos(r)]])
         return T
 
+
 class MPPINode(object):
     def __init__(self):
         self._state = np.zeros((13, 1))
@@ -61,21 +75,118 @@ class MPPINode(object):
         self._steps = 0
         self._timeSteps = 0.
 
-        rospy.loginfo("Setup Controller...")
-        rospy.loginfo("Set GPU")
-        if rospy.has_param("~gpu_idx"):
-            self.gpu_idx = rospy.get_param("~gpu_idx")
-            gpus = tf.config.list_physical_devices('GPU')
-            if len(gpus) > self.gpu_idx:
-                tf.config.set_visible_devices(gpus[self.gpu_idx], 'GPU')
-            else:
-                rospy.logerr("GPU index out of range")
-        rospy.loginfo("Done")
-        # Import after setting the GPU otherwise tensorflow complains.
-        from mppi_tf.scripts.controller import get_controller
-        from mppi_tf.scripts.cost import get_cost
-        from mppi_tf.scripts.model import get_model
+        self.load_ros_params()
 
+        if "learnable" in self._modelConf:
+            self._learnable = self._modelConf["learnable"]
+        else:
+            self._learnable = False
+
+
+        if self._log:
+            stamp = datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
+            path = 'graphs/python/'
+            if self._dev:
+                path = os.path.join(path, 'debug')
+            self._logPath = os.path.join(self._logPath,
+                                         path,
+                                         self._modelConf['type'],
+                                         "k" + str(self._samples.numpy()),
+                                         "T" + str(self._horizon),
+                                         "L" + str(self._lambda),
+                                         stamp,
+                                         "controller")
+            if self._learnable:
+                self.set_learner_path()
+
+        rospy.loginfo("Setup Controller...")
+
+        rospy.loginfo("Get cost")
+
+        self._cost = get_cost(self._task,
+                             self._lambda,
+                             self._gamma,
+                             self._upsilon,
+                             self._noise)
+
+        rospy.loginfo("Get Model")
+
+        self._model = get_model(self._modelConf,
+                               self._samples,
+                               self._dt,
+                               True,
+                               self._actionDim,
+                               self._modelConf['type'])
+
+
+        rospy.loginfo("Get controller")
+
+        self._controller = get_controller(model=self._model,
+                                          cost=self._cost,
+                                          k=self._samples,
+                                          tau=self._horizon,
+                                          dt=self._dt,
+                                          sDim=self._stateDim,
+                                          aDim=self._actionDim,
+                                          lam=self._lambda,
+                                          upsilon=self._upsilon,
+                                          sigma=self._noise,
+                                          normalizeCost=True,
+                                          filterSeq=False,
+                                          log=self._log,
+                                          logPath=self._logPath,
+                                          gif=False,
+                                          graphMode=self._graphMode,
+                                          debug=self._dev,
+                                          configDict=None,
+                                          taskDict=self._task,
+                                          modelDict=self._modelConf)
+
+        rospy.loginfo("Subscrive to odometrie topics...")
+
+        # Subscribe to odometry topic
+        self._odomTopicSub = rospy.Subscriber("/{}/pose_gt".
+                                              format(self._uuvName),
+                                              numpy_msg(Odometry),
+                                              self.odometry_callback)
+        rospy.loginfo("Done")
+
+        rospy.loginfo("Setup publisher to thruster topics...")
+
+        # Publish on to the thruster alocation matrix.
+        self._thrustPub = rospy.Publisher(
+                'thruster_input', WrenchStamped, queue_size=1)
+
+        self._transPub = rospy.Publisher(
+                '/mppi/controller/transition',
+                Transition,
+                queue_size=1
+        )
+        rospy.loginfo("Done")
+        
+        if self._learnable:
+            rospy.loginfo("Creating service for parameter update...")
+            self._writeWeightsSrv = rospy.Service("mppi/controller/write_weights",
+                                                  WriteWeights,
+                                                  self.write_weights)
+
+        rospy.loginfo("Trace the tensorflow computational graph...")
+        # TODO: run the controller "a blanc" to generate the tensroflow
+        # graph one before starting to run it.
+        start = t.perf_counter()
+        if self._graphMode:
+            self._controller.trace()
+
+        end = t.perf_counter()
+        rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
+
+        #rospy.loginfo("Proifile the controller...")
+        #self._controller.profile()
+
+        # reset controller.
+        rospy.loginfo("Controller loaded.")
+
+    def load_ros_params(self):
         if rospy.has_param("~model_name"):
             self._uuvName = rospy.get_param("~model_name")
         else:
@@ -164,96 +275,6 @@ class MPPINode(object):
         else:
             rospy.logerr("No noise given")
 
-        rospy.loginfo("Get cost")
-
-        self._cost = get_cost(self._task,
-                             self._lambda,
-                             self._gamma,
-                             self._upsilon,
-                             self._noise)
-
-        rospy.loginfo("Get Model")
-
-        self._model = get_model(self._modelConf,
-                               self._samples,
-                               self._dt,
-                               True,
-                               self._actionDim,
-                               self._modelConf['type'])
-        if "learnable" in self._modelConf:
-            self._learnable = self._modelConf["learnable"]
-        else:
-            self._learnable = False
-
-        rospy.loginfo("Get controller")
-
-        self._controller = get_controller(model=self._model,
-                                          cost=self._cost,
-                                          k=self._samples,
-                                          tau=self._horizon,
-                                          dt=self._dt,
-                                          sDim=self._stateDim,
-                                          aDim=self._actionDim,
-                                          lam=self._lambda,
-                                          upsilon=self._upsilon,
-                                          sigma=self._noise,
-                                          normalizeCost=True,
-                                          filterSeq=False,
-                                          log=self._log,
-                                          logPath=self._logPath,
-                                          gif=False,
-                                          graphMode=self._graphMode,
-                                          debug=self._dev,
-                                          configFile=None,
-                                          taskFile=self._task)
-
-        rospy.loginfo("Subscrive to odometrie topics...")
-
-        # Subscribe to odometry topic
-        self._odomTopicSub = rospy.Subscriber("/{}/pose_gt".
-                                              format(self._uuvName),
-                                              numpy_msg(Odometry),
-                                              self.odometry_callback)
-        rospy.loginfo("Done")
-
-        rospy.loginfo("Setup publisher to thruster topics...")
-
-        # Publish on to the thruster alocation matrix.
-        self._thrustPub = rospy.Publisher(
-                'thruster_input', WrenchStamped, queue_size=1)
-
-        self._transPub = rospy.Publisher(
-                '/mppi/transition',
-                Transition,
-                queue_size=1
-        )
-        rospy.loginfo("Done")
-        
-        if self._learnable:
-            rospy.loginfo("Creating client for update service..")
-            rospy.wait_for_service('/mppi/update_model_params')
-            try:
-                self.updateModelSrv = rospy.ServiceProxy('/mppi/update_model_params', UpdateModelParam)
-            except rospy.ServiceException as e:
-                print("Service call failed: %s"%e)
-            rospy.loginfo("Done")
-
-        rospy.loginfo("Trace the tensorflow computational graph...")
-        # TODO: run the controller "a blanc" to generate the tensroflow
-        # graph one before starting to run it.
-        start = t.perf_counter()
-        if self._graphMode:
-            self._controller.trace()
-
-        end = t.perf_counter()
-        rospy.loginfo("Tracing done in {:.4f} s".format(end-start))
-
-        rospy.loginfo("Proifile the controller...")
-        self._controller.profile()
-
-        # reset controller.
-        rospy.loginfo("Controller loaded.")
-
     def publish_control_wrench(self, forces):
         if not self._initOdom:
             return
@@ -340,28 +361,17 @@ class MPPINode(object):
         self._applied.append(np.expand_dims(self._forces.copy(), axis=0))
         self._states.append(np.expand_dims(self._state.copy(), axis=0))
 
-        if self._steps % 10 == 0:
+        if self._steps % 200 == 0:
             # should place that in a separte loop.
             self.log()
             if self._learnable:
-                rospy.loginfo("Updating parameter model")
-                rospy.wait_for_service('/mppi/update_model_params')
-                try:
-                    rospy.loginfo("RESUQEST")
-                    # self.updateModelSrv = rospy.ServiceProxy('/mppi/update_model_params', UpdateModelParam)
-                    resp = self.updateModelSrv(True)
-                    rospy.loginfo("RESPONSE")
-                    self._model.set_var(resp.weights)
-                except rospy.ServiceException as e:
-                    print("Service call failed: %s"%e)
+                self.update_model()
 
     def log(self):
         path = "/home/pierre/workspace/uuv_ws/src/mppi_ros/log/"
-        self._controller.save_rp("{}transitons.npz".format(path))
+        self.save_rb("{}transitons.npz".format(path))
         with open("{}applied.npy".format(path), "wb") as f:
             np.save(f, np.concatenate(self._applied, axis=0))
-        with open("{}init_state.npy".format(path), "wb") as f:
-            np.save(f, self._initalState)
         with open("{}states.npy".format(path), "wb") as f:
             np.save(f, np.concatenate(self._states, axis=0))
         rospy.loginfo("Saved applied actions and inital state to file")
@@ -413,6 +423,42 @@ class MPPINode(object):
         state[7:13, :] = np.concatenate([linVel, angVel], axis=0)
         return state
 
+    def write_weights(self, req):
+        self._model.set_var(req.weights)
+        return WriteWeightsResponse(True)
+
+    def update_model(self):
+        rospy.loginfo("Updating parameter model")
+        rospy.wait_for_service('/mppi/learner/update_model_params')
+        try:
+            start = t.perf_counter()
+            updateModelSrv = rospy.ServiceProxy('/mppi/learner/update_model_params', UpdateModelParam)
+            resp = updateModelSrv(True, self._log, self._steps)
+            end = t.perf_counter()
+            rospy.loginfo("Service replied in {:.4f} s".format(end-start))
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+
+    def save_rb(self, file):
+        rospy.loginfo("Creating client for save service..")
+        rospy.wait_for_service('/mppi/learner/save_rb')
+        try:
+            saveRbSrv = rospy.ServiceProxy('/mppi/learner/save_rb', SaveRb)
+            resp = saveRbSrv(file)
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+        rospy.loginfo("Done")
+
+    def set_learner_path(self):
+        rospy.loginfo("Creating client for update service..")
+        rospy.wait_for_service('/mppi/learner/set_log_path')
+        try:
+            setLogPath = rospy.ServiceProxy('/mppi/learner/set_log_path', SetLogPath)
+            resp = setLogPath(self._logPath)
+            print(resp)
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+        rospy.loginfo("Done")
 
 if __name__ == "__main__":
     print("Mppi - DP Controller")
