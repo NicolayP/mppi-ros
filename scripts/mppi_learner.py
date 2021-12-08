@@ -105,7 +105,7 @@ class MPPILearnerNode(object):
         if req.train:
             self.train()
         if req.save:
-            self._model.save_params(self._logPath, req.step)
+            self._learner.save_params(req.step)
         weights = self.format_weights()
         rospy.loginfo("Send weights")
         rospy.wait_for_service('/mppi/learner/write_weights')

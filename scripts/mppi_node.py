@@ -94,8 +94,7 @@ class MPPINode(object):
                                          "k" + str(self._samples.numpy()),
                                          "T" + str(self._horizon),
                                          "L" + str(self._lambda),
-                                         stamp,
-                                         "controller")
+                                         stamp)
             if self._learnable:
                 self.set_learner_path()
 
@@ -364,6 +363,8 @@ class MPPINode(object):
         if self._steps % 200 == 0:
             # should place that in a separte loop.
             self.log()
+        
+        if self._steps % 50 == 0:
             if self._learnable:
                 self.update_model()
 
@@ -433,7 +434,7 @@ class MPPINode(object):
         try:
             start = t.perf_counter()
             updateModelSrv = rospy.ServiceProxy('/mppi/learner/update_model_params', UpdateModelParam)
-            resp = updateModelSrv(True, self._log, self._steps)
+            resp = updateModelSrv(train=True, save=self._log, step=self._steps)
             end = t.perf_counter()
             rospy.loginfo("Service replied in {:.4f} s".format(end-start))
         except rospy.ServiceException as e:
