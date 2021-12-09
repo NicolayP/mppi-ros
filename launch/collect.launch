@@ -1,0 +1,41 @@
+<launch>
+    <arg name="rollouts"
+         default="2"
+         doc="The number of random rollouts to perform."/>
+
+    <arg name="max_steps"
+         default="2"
+         doc="The number of setps for each rollout."/>
+
+    <arg name="buffer_size"
+         default="40000"
+         doc="The number of samples in the buffer."/>
+
+    <arg name="log_file"
+         default="$(find mppi_ros)/log/test_data_collection.npz"
+         doc="file where to log the trnasitions"/>
+
+    <arg name="uuv_name"
+         default="rexrov2"
+         doc="The vehicle used to save the transitions."/>
+
+    <arg name="dt"
+         default="0.1"
+         doc="The frequency at which the model will run"/>
+
+    <node name="mppi_data_collection"
+          pkg="mppi_ros"
+          type="mppi_data_collection.py"
+          output="screen">
+
+        <param name="rollouts" value="$(arg rollouts)"/>
+        <param name="max_steps" value="$(arg max_steps)"/>
+        <param name="log_file" value="$(arg log_file)"/>
+        <param name="buffer_size" value="$(arg buffer_size)"/>
+        <param name="uuv_name" value="$(arg uuv_name)"/>
+        <param name="dt" value="$(arg dt)"/>
+
+        <remap from="thruster_input"
+               to="$(arg uuv_name)/thruster_manager/input_stamped"/>
+    </node>
+</launch>
