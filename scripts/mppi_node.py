@@ -461,6 +461,7 @@ class MPPINode(object):
             print("Service call failed: %s"%e)
         rospy.loginfo("Done")
 
+
 if __name__ == "__main__":
     print("Mppi - DP Controller")
     rospy.init_node("MPPI_DP_CONTROLLER")
