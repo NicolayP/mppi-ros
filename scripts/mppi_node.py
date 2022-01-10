@@ -17,7 +17,7 @@ from mppi_tf.scripts.src.controller import get_controller
 from mppi_tf.scripts.src.cost import get_cost
 from mppi_tf.scripts.src.model import get_model
 
-from geometry_msgs.msg import WrenchStamped
+from geometry_msgs.msg import WrenchStamped, Twist
 from nav_msgs.msg import Odometry
 from rospy.numpy_msg import numpy_msg
 from mppi_ros.msg import Transition
@@ -156,6 +156,10 @@ class MPPINode(object):
         self._thrustPub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
+                # Publish on to the thruster alocation matrix.
+        self._thrustPubTwsit = rospy.Publisher(
+                'thruster_input_twist', Twist, queue_size=1)
+
         self._transPub = rospy.Publisher(
                 '/mppi/controller/transition',
                 Transition,
@@ -292,6 +296,27 @@ class MPPINode(object):
 
         self._thrustPub.publish(forceMsg)
 
+    def publish_control_twist(self, forces):
+        if not self._initOdom:
+            return
+
+        #sign = np.sign(forces)
+        #sign = sign - np.sign(self._prevForce)
+
+        forceMsg = Twist()
+        # Force
+        forceMsg.linear.x = forces[0]
+        forceMsg.linear.y = forces[1]
+        forceMsg.linear.z = forces[2]
+        # Torque
+        forceMsg.angluar.x = forces[3]
+        forceMsg.angluar.y = forces[4]
+        forceMsg.angluar.z = forces[5]
+
+        self._prevForce = forces
+
+        self._thrustPubTwist.publish(forceMsg)
+
     def publish_transition(self, x, u, xNext):
 
         # Header
@@ -310,12 +335,14 @@ class MPPINode(object):
         start = t.perf_counter()
 
         self._forces = self._controller.next(state)
+        # Normalize forces vector.
+        self._forces = self._forces / np.linalg.norm(self._forces)
 
         end = t.perf_counter()
         self._elapsed += (end-start)
         self._timeSteps += 1
         self._steps += 1
-        self.publish_control_wrench(self._forces)
+        self.publish_control_twist(self._forces)
 
         if self._steps % 10 == 0:
             rospy.loginfo("*"*5 + " MPPI Time stats " + "*"*5)
