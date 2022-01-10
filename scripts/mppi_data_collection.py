@@ -21,10 +21,11 @@ import time
 
 
 def rotBtoI_np(quat):
-    w = quat[0]
-    x = quat[1]
-    y = quat[2]
-    z = quat[3]
+    
+    x = quat[0]
+    y = quat[1]
+    z = quat[2]
+    w = quat[3]
 
     return np.array([
                         [1 - 2 * (y**2 + z**2),
@@ -164,10 +165,10 @@ class MPPIDataCollection(object):
         
         self._prevState = np.zeros((13, 1))
         self._prevState[0:3, 0] = p
-        self._prevState[3, 0] = q.w
-        self._prevState[4, 0] = q.x
-        self._prevState[5, 0] = q.y
-        self._prevState[6, 0] = q.z
+        self._prevState[3, 0] = q.x
+        self._prevState[4, 0] = q.y
+        self._prevState[5, 0] = q.z
+        self._prevState[6, 0] = q.w
         self._prevState[7:13, 0] = np.concatenate([pDot, rDot], axis=0)
 
     def rollout(self):
@@ -249,16 +250,18 @@ class MPPIDataCollection(object):
                                   [msg.pose.pose.position.z]])
 
         # Using the (w, x, y, z) format for quaternions
-        state[3:7, :] = np.array([[msg.pose.pose.orientation.w],
-                                  [msg.pose.pose.orientation.x],
+        state[3:7, :] = np.array([[msg.pose.pose.orientation.x],
                                   [msg.pose.pose.orientation.y],
-                                  [msg.pose.pose.orientation.z]])
+                                  [msg.pose.pose.orientation.z],
+                                  [msg.pose.pose.orientation.w]])
 
         # Linear velocity on the INERTIAL frame
         linVel = np.array([msg.twist.twist.linear.x,
                            msg.twist.twist.linear.y,
                            msg.twist.twist.linear.z])
+
         # Transform linear velocity to the BODY frame
+        # TODO: Change this to a quaternion rotation. AVOID rotation matrix
         rotItoB = rotBtoI_np(state[3:7, 0]).T
 
         linVel = np.expand_dims(np.dot(rotItoB, linVel), axis=-1)

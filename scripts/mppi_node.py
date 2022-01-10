@@ -29,10 +29,10 @@ from datetime import datetime
 import os
 
 def rotBtoI_np(quat):
-    w = quat[0]
-    x = quat[1]
-    y = quat[2]
-    z = quat[3]
+    x = quat[0]
+    y = quat[1]
+    z = quat[2]
+    w = quat[3]
 
     return np.array([
                         [1 - 2 * (y**2 + z**2),
@@ -401,10 +401,10 @@ class MPPINode(object):
                                   [msg.pose.pose.position.z]])
 
         # Using the (w, x, y, z) format for quaternions
-        state[3:7, :] = np.array([[msg.pose.pose.orientation.w],
-                                  [msg.pose.pose.orientation.x],
+        state[3:7, :] = np.array([[msg.pose.pose.orientation.x],
                                   [msg.pose.pose.orientation.y],
-                                  [msg.pose.pose.orientation.z]])
+                                  [msg.pose.pose.orientation.z],
+                                  [msg.pose.pose.orientation.w]])
 
         # Linear velocity on the INERTIAL frame
         linVel = np.array([msg.twist.twist.linear.x,
