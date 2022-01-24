@@ -119,12 +119,10 @@ class MPPINode(object):
 
 
         rospy.loginfo("Get controller")
-
         self._controller = get_controller(model=self._model,
                                           cost=self._cost,
                                           k=self._samples,
                                           tau=self._horizon,
-                                          dt=self._dt,
                                           sDim=self._stateDim,
                                           aDim=self._actionDim,
                                           lam=self._lambda,
@@ -134,7 +132,6 @@ class MPPINode(object):
                                           filterSeq=False,
                                           log=self._log,
                                           logPath=self._logPath,
-                                          gif=False,
                                           graphMode=self._graphMode,
                                           debug=self._dev,
                                           configDict=None,
@@ -144,7 +141,7 @@ class MPPINode(object):
         rospy.loginfo("Subscrive to odometrie topics...")
 
         # Subscribe to odometry topic
-        self._odomTopicSub = rospy.Subscriber("/{}/pose_gt".
+        self._odomTopicSub = rospy.Subscriber("odom".
                                               format(self._uuvName),
                                               numpy_msg(Odometry),
                                               self.odometry_callback)
@@ -157,7 +154,7 @@ class MPPINode(object):
                 'thruster_input', WrenchStamped, queue_size=1)
 
                 # Publish on to the thruster alocation matrix.
-        self._thrustPubTwsit = rospy.Publisher(
+        self._thrustPubTwist = rospy.Publisher(
                 'thruster_input_twist', Twist, queue_size=1)
 
         self._transPub = rospy.Publisher(
@@ -309,9 +306,9 @@ class MPPINode(object):
         forceMsg.linear.y = forces[1]
         forceMsg.linear.z = forces[2]
         # Torque
-        forceMsg.angluar.x = forces[3]
-        forceMsg.angluar.y = forces[4]
-        forceMsg.angluar.z = forces[5]
+        forceMsg.angular.x = forces[3]
+        forceMsg.angular.y = forces[4]
+        forceMsg.angular.z = forces[5]
 
         self._prevForce = forces
 
@@ -413,12 +410,12 @@ class MPPINode(object):
         # linear velocity -> world frame
         # angular velocity -> world frame
 
-        if self._model._inertialFrameId != msg.header.frame_id:
-            raise rospy.ROSException('The inertial frame ID used by the '
-                                     'vehicle model does not match the '
-                                     'odometry frame ID, vehicle=%s, odom=%s' %
-                                     (self._model._inertialFrameId,
-                                      msg.header.frame_id))
+        #if self._model._inertialFrameId != msg.header.frame_id:
+        #    raise rospy.ROSException('The inertial frame ID used by the '
+        #                             'vehicle model does not match the '
+        #                             'odometry frame ID, vehicle=%s, odom=%s' %
+        #                             (self._model._inertialFrameId,
+        #                              msg.header.frame_id))
 
         # Update the velocity vector
         # Update the pose in the inertial frame
