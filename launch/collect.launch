@@ -1,39 +1,39 @@
 <launch>
     <arg name="rollouts"
-         default="2"
+         default="500"
          doc="The number of random rollouts to perform."/>
 
     <arg name="max_steps"
-         default="2"
+         default="500"
          doc="The number of setps for each rollout."/>
 
-    <arg name="buffer_size"
-         default="40000"
-         doc="The number of samples in the buffer."/>
-
-    <arg name="log_file"
-         default="$(find mppi_ros)/log/test_data_collection.npz"
-         doc="file where to log the trnasitions"/>
+    <arg name="log_dir"
+         default="$(find mppi_ros)/log/data/"
+         doc="data saving directory"/>
 
     <arg name="uuv_name"
          default="rexrov2"
          doc="The vehicle used to save the transitions."/>
 
     <arg name="dt"
-         default="0.1"
-         doc="The frequency at which the model will run"/>
+         default="1"
+         doc="The frequency at which the sampler will update the force tensor"/>
 
-    <node name="mppi_data_collection"
+     <arg name="max_thrust"
+          default="1000"
+          doc="The max force the system can generate"/>
+
+    <node name="mppi_random_walker"
           pkg="mppi_ros"
-          type="mppi_data_collection.py"
+          type="mppi_random_walker.py"
           output="screen">
 
         <param name="rollouts" value="$(arg rollouts)"/>
         <param name="max_steps" value="$(arg max_steps)"/>
-        <param name="log_file" value="$(arg log_file)"/>
-        <param name="buffer_size" value="$(arg buffer_size)"/>
+        <param name="log_dir" value="$(arg log_dir)"/>
         <param name="uuv_name" value="$(arg uuv_name)"/>
         <param name="dt" value="$(arg dt)"/>
+        <param name="max_thrust" value="$(arg max_thrust)"/>
 
         <remap from="thruster_input"
                to="$(arg uuv_name)/thruster_manager/input_stamped"/>
