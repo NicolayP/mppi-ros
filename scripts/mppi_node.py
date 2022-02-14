@@ -153,7 +153,7 @@ class MPPINode(object):
         self._thrustPub = rospy.Publisher(
                 'thruster_input', WrenchStamped, queue_size=1)
 
-                # Publish on to the thruster alocation matrix.
+        # Publish on to the thruster alocation matrix.
         self._thrustPubTwist = rospy.Publisher(
                 'thruster_input_twist', Twist, queue_size=1)
 
@@ -449,7 +449,7 @@ class MPPINode(object):
         return state
 
     def write_weights(self, req):
-        self._model.set_var(req.weights)
+        self._model.update_weights(req.weights)
         return WriteWeightsResponse(True)
 
     def update_model(self):

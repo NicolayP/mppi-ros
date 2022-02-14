@@ -83,7 +83,7 @@ class MPPILearnerNode(object):
     def save_rb(self, req):
         dir = os.path.dirname(os.path.abspath(req.filename))
         if os.path.isdir(dir):
-            self._learner.save_transitions(req.filename)
+            self._learner.save_rb(req.filename)
             rospy.loginfo("Transitions saved.")
             return SaveRbResponse(True)
         else:
@@ -119,7 +119,7 @@ class MPPILearnerNode(object):
         layers = []
 
         w = True
-        for el in self._model.get_var():
+        for el in self._model.weights():
             if w:
                 layer = NNLayer()
                 weights = Tensor2d()
