@@ -1,10 +1,10 @@
 <launch>
     <arg name="rollouts"
-         default="500"
+         default="1000"
          doc="The number of random rollouts to perform."/>
 
     <arg name="max_steps"
-         default="500"
+         default="1000"
          doc="The number of setps for each rollout."/>
 
     <arg name="log_dir"

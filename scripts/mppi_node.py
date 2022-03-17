@@ -110,12 +110,22 @@ class MPPINode(object):
 
         rospy.loginfo("Get Model")
 
+        self._limMax = tf.expand_dims(tf.constant(self._modelConf['limMax'],
+                                                  dtype=tf.float64),
+                                      axis=-1)                                      
+
+        self._limMin = tf.expand_dims(tf.constant(self._modelConf['limMin'],
+                                                  dtype=tf.float64),
+                                      axis=-1)
+
         self._model = get_model(self._modelConf,
-                               self._samples,
-                               self._dt,
-                               True,
-                               self._actionDim,
-                               self._modelConf['type'])
+                                self._samples,
+                                self._dt,
+                                self._stateDim,
+                                self._actionDim,
+                                self._limMax,
+                                self._limMin,
+                                self._modelConf['type'])
 
 
         rospy.loginfo("Get controller")
@@ -144,7 +154,8 @@ class MPPINode(object):
         self._odomTopicSub = rospy.Subscriber("odom".
                                               format(self._uuvName),
                                               numpy_msg(Odometry),
-                                              self.odometry_callback)
+                                              self.odometry_callback,
+                                              queue_size=1)
         rospy.loginfo("Done")
 
         rospy.loginfo("Setup publisher to thruster topics...")
@@ -189,6 +200,7 @@ class MPPINode(object):
     def load_ros_params(self):
         if rospy.has_param("~model_name"):
             self._uuvName = rospy.get_param("~model_name")
+            self._namespace = rospy.get_param("~model_name")
         else:
             rospy.logerr("Need to specify the model name to publish on")
             return
@@ -311,7 +323,7 @@ class MPPINode(object):
         forceMsg.angular.z = forces[5]
 
         self._prevForce = forces
-
+        print(forceMsg)
         self._thrustPubTwist.publish(forceMsg)
 
     def publish_transition(self, x, u, xNext):
@@ -379,14 +391,14 @@ class MPPINode(object):
             # update previous state
             self._prevState = self._state
 
-        self.call_controller(self._prevState)
+        self.call_controller(self._state)
 
         self._applied.append(np.expand_dims(self._forces.copy(), axis=0))
         self._states.append(np.expand_dims(self._state.copy(), axis=0))
 
-        if self._steps % 200 == 0:
+        #if self._steps % 200 == 0:
             # should place that in a separte loop.
-            self.log()
+            #self.log()
         
         if self._steps % 50 == 0:
             if self._learnable:
@@ -394,7 +406,7 @@ class MPPINode(object):
 
     def log(self):
         path = "/home/pierre/workspace/uuv_ws/src/mppi_ros/log/"
-        self.save_rb("{}transitons.npz".format(path))
+        #self.save_rb("{}transitons.npz".format(path))
         with open("{}applied.npy".format(path), "wb") as f:
             np.save(f, np.concatenate(self._applied, axis=0))
         with open("{}states.npy".format(path), "wb") as f:
@@ -402,6 +414,7 @@ class MPPINode(object):
         rospy.loginfo("Saved applied actions and inital state to file")
 
     def update_odometry(self, msg):
+
         """Odometry topic subscriber callback function."""
         # The frames of reference delivered by the odometry seems to be as
         # follows

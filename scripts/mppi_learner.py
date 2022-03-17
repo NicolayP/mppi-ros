@@ -43,7 +43,9 @@ class MPPILearnerNode(object):
         self._model = get_model(modelConf,
                                 1,
                                 1,
-                                True,
+                                1,
+                                1,
+                                1,
                                 1,
                                 "auv_nn")
 

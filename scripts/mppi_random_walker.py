@@ -46,7 +46,7 @@ class MPPIDataCollection(object):
         pure uniform sampling or a random walker with a specified
         stochastic process.
     '''
-    def __init__(self, sDim, aDim):
+    def __init__(self):
         self._forces = np.zeros(6)
         self.load_ros_params()
 
@@ -137,8 +137,8 @@ class MPPIDataCollection(object):
         state = ModelState()
         p = np.random.rand(3)
         q = quaternion.as_quat_array(np.random.rand(4))
-        pDot = np.random.rand(3)*5
-        rDot = np.random.rand(3)*0.5
+        pDot = np.random.rand(3)*10
+        rDot = np.random.rand(3)*1.5
         state.model_name = self._uuvName
         state.pose.position.x = p[0]
         state.pose.position.y = p[1]
@@ -209,6 +209,7 @@ class MPPIDataCollection(object):
 
             if self._run == False:
                 self.uniform = bool(random.randint(0, 1))
+                self.uniform = True
                 self.run()
             while self._run:
                 time.sleep(1)
@@ -278,7 +279,7 @@ if __name__ == "__main__":
     rospy.init_node("MPPI_DP_CONTROLLER")
 
     try:
-        node = MPPIDataCollection(13, 6)
+        node = MPPIDataCollection()
         # rospy.spin()
     except rospy.ROSInterruptException:
         print("Caught exception")

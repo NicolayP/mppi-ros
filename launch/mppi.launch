@@ -25,12 +25,12 @@
     <arg name="lambda" default="0.20" doc="Lambda hyperparam in MPPI"/>
     <arg name="gamma" default="0.1" doc="decoupling factor between cost and noise"/>
     <arg name="upsilon" default="0.5" doc="augmented noise covariance"/>
-    <arg name="samples" default="3000" doc="number of samples used for the controller"/>
+    <arg name="samples" default="1000" doc="number of samples used for the controller"/>
     <arg name="horizon" default="50" doc="Prediction horizon length"/>
     <arg name="cost" default="$(find mppi_ros)/scripts/mppi_tf/config/tasks/bluerov_static.yaml" doc="Configuration file for the cost function"/>
     <arg name="cost_normalization" default="True" doc="Normalize the cost after the rollouts to tune lambda easier, no theoretical guarentie)"/>
     <arg name="model" default="$(find mppi_ros)/scripts/mppi_tf/config/models/nn_model.default.yaml" doc="The internal model used by mppi"/>
-    <arg name="conf" default="$(find mppi_ros)/scripts/mppi_tf/config/envs/uuv_sim.default.yaml" doc="Configuration file used for uuv_sim"/>
+    <arg name="conf" default="$(find mppi_ros)/scripts/mppi_tf/config/envs/bluerov.default.yaml" doc="Configuration file used for uuv_sim"/>
     <arg name="dt" default="0.1" doc="time interval between two controller actions"/>
     <arg name="state_dim" default="13" doc="the dimensionality of the state vector"/>
     <arg name="action_dim" default="6" doc="the dimensionality of the action vector"/>
