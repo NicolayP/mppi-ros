@@ -135,10 +135,14 @@ class MPPIDataCollection(object):
     def spawn(self):
         # generate random state dict.
         state = ModelState()
-        p = np.random.rand(3)
-        q = quaternion.as_quat_array(np.random.rand(4))
-        pDot = np.random.rand(3)*10
-        rDot = np.random.rand(3)*1.5
+        p = np.random.normal(size=(3,))
+        roll = np.random.normal()*10.*np.pi/180. # radian
+        pitch = np.random.normal()*10.*np.pi/180. # radian
+        yaw = np.random.normal(1)*np.pi # radian
+        q = quaternion.from_euler_angles(roll, pitch, yaw)
+
+        pDot = np.random.normal(size=(3,))*0
+        rDot = np.random.normal(size=(3,))*0
         state.model_name = self._uuvName
         state.pose.position.x = p[0]
         state.pose.position.y = p[1]
@@ -209,7 +213,10 @@ class MPPIDataCollection(object):
 
             if self._run == False:
                 self.uniform = bool(random.randint(0, 1))
-                self.uniform = True
+                self.const = bool(random.randint(0, 1))
+                self.const = True
+                if self.const:
+                    self._forces = self.rand_const()
                 self.run()
             while self._run:
                 time.sleep(1)
@@ -218,16 +225,31 @@ class MPPIDataCollection(object):
             self.bag.close()
         rospy.loginfo("Stop recording")
 
+    def rand_const(self):
+        idx = np.random.randint(0, 6)
+        forces = np.zeros(6)
+        forces[idx] = np.random.uniform(low=-self._maxThrust,
+                                           high=self._maxThrust,
+                                           size=(1))
+        return forces
+
     def next(self):
         t = rospy.get_rostime()
 
         if self._dt > (t - self._prevTime).to_sec():
             return self._forces
         else:
-            if self.uniform:
-                forces = np.random.uniform(low=-self._maxThrust, high=self._maxThrust, size=(6))
+            if self.const:
+                forces = self._forces
+
+            elif self.uniform:
+                forces = np.random.uniform(low=-self._maxThrust,
+                                           high=self._maxThrust,
+                                           size=(6))
             else:
-                forces = self._forces + np.random.normal(loc=0, scale=self._std, size=(6))
+                forces = self._forces + np.random.normal(loc=0,
+                                                         scale=self._std,
+                                                         size=(6))
             self._prevTime = t
         return forces
 

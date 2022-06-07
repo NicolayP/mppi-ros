@@ -123,8 +123,8 @@ class MPPINode(object):
                                 self._dt,
                                 self._stateDim,
                                 self._actionDim,
-                                self._limMax,
-                                self._limMin,
+                                #self._limMax,
+                                #self._limMin,
                                 self._modelConf['type'])
 
 
@@ -323,7 +323,6 @@ class MPPINode(object):
         forceMsg.angular.z = forces[5]
 
         self._prevForce = forces
-        print(forceMsg)
         self._thrustPubTwist.publish(forceMsg)
 
     def publish_transition(self, x, u, xNext):
@@ -345,13 +344,13 @@ class MPPINode(object):
 
         self._forces = self._controller.next(state)
         # Normalize forces vector.
-        self._forces = self._forces / np.linalg.norm(self._forces)
+        #self._forces = self._forces / np.linalg.norm(self._forces)
 
         end = t.perf_counter()
         self._elapsed += (end-start)
         self._timeSteps += 1
         self._steps += 1
-        self.publish_control_twist(self._forces)
+        self.publish_control_wrench(self._forces)
 
         if self._steps % 10 == 0:
             rospy.loginfo("*"*5 + " MPPI Time stats " + "*"*5)
