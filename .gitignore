@@ -3,3 +3,4 @@
 *log*
 *.ipynb*
 *.png
+data/*
